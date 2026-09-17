@@ -324,6 +324,7 @@ let state = {
   bulkApproveOpen: false,
   selectedPendingIds: new Set(),
   whatsappNumber: '573000000000',
+  cambiandoClaveId: null,
   tableSort: {col:'fechaSolicitud', dir:'desc'},
   tableFilterEstado: 'todos',
   tableSearch: '',
@@ -979,8 +980,22 @@ function renderUsuarios(){
               <tr>
                 <td>${u.nombre}${u.claveTemporal ? ' <span class="helper-text">(clave temporal)</span>' : ''}</td><td>${u.cargo||u.area||''}</td>
                 <td><span class="role-pill" style="background:${ROLE_COLOR[u.rol].bg};color:${ROLE_COLOR[u.rol].fg}">${ROLE_LABEL[u.rol]}</span></td>
-                <td>${u.id===state.currentUser.id ? '<span class="helper-text">Tu usuario</span>' : `<button class="btn btn-reject" data-uid="${u.id}" style="padding:5px 10px;font-size:11px;">Eliminar</button>`}</td>
+                <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button class="btn" data-cambiar-clave="${u.id}" style="padding:5px 10px;font-size:11px;">Cambiar contraseña</button>
+                  ${u.id===state.currentUser.id ? '<span class="helper-text">Tu usuario</span>' : `<button class="btn btn-reject" data-uid="${u.id}" style="padding:5px 10px;font-size:11px;">Eliminar</button>`}
+                </td>
               </tr>
+              ${state.cambiandoClaveId===u.id ? `
+              <tr>
+                <td colspan="4" style="background:#F7F8F6;">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 2px;">
+                    <input type="password" id="nuevaClaveInput" placeholder="Nueva contraseña para ${u.nombre}" style="flex:1;min-width:180px;border:1px solid var(--line);border-radius:4px;padding:7px 9px;font-size:12.5px;">
+                    <button class="btn btn-primary" data-guardar-clave="${u.id}" style="padding:6px 12px;font-size:11px;">Guardar</button>
+                    <button class="btn btn-ghost" id="cancelarClaveBtn" style="padding:6px 12px;font-size:11px;">Cancelar</button>
+                  </div>
+                </td>
+              </tr>
+              ` : ''}
             `).join('')}
           </tbody>
         </table>
@@ -1054,6 +1069,19 @@ function renderUsuarios(){
       if(!confirm('¿Eliminar este usuario? No podrá volver a iniciar sesión.')) return;
       await runAction(btn, async ()=>{ await deleteDoc(doc(db,'usuarios', btn.dataset.uid)); });
     });
+  });
+  mount.querySelectorAll('button[data-cambiar-clave]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ state.cambiandoClaveId = btn.dataset.cambiarClave; render(); });
+  });
+  const cancelarClaveBtn = document.getElementById('cancelarClaveBtn');
+  if(cancelarClaveBtn) cancelarClaveBtn.addEventListener('click', ()=>{ state.cambiandoClaveId = null; render(); });
+  const guardarClaveBtn = document.querySelector('button[data-guardar-clave]');
+  if(guardarClaveBtn) guardarClaveBtn.addEventListener('click', async (e)=>{
+    const nueva = document.getElementById('nuevaClaveInput').value;
+    if(!nueva || nueva.length<4){ alert('La contraseña debe tener al menos 4 caracteres.'); return; }
+    const uid = guardarClaveBtn.dataset.guardarClave;
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'usuarios', uid), { clave: nueva, claveTemporal: true }); });
+    if(ok){ state.cambiandoClaveId = null; render(); }
   });
   document.getElementById('addUnidadBtn').addEventListener('click', async (e)=>{
     const input = document.getElementById('nu_unidad_nueva');
