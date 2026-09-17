@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polyagro · Compras</title>
+<!--
+  ============================================================
+  CONFIGURACION REQUERIDA (una sola vez):
+  1. Crea un proyecto en https://console.firebase.google.com
+  2. Activa "Firestore Database" (modo produccion) y en
+     "Authentication" activa el metodo "Anonimo".
+  3. Ve a Configuracion del proyecto > Tus apps > Web (</>) y
+     copia el objeto firebaseConfig. Pegalo abajo en el
+     <script type="module"> donde dice firebaseConfig.
+  4. En Firestore > Reglas, pega las reglas que te compartio
+     Claude en el chat.
+  5. Crea manualmente en Firestore, coleccion "usuarios", el
+     primer documento (rol compras) para poder entrar la
+     primera vez. Campos: nombre, area, rol, clave.
+  ============================================================
+-->
+<style>
+  :root{
+    --bg:#F5F7F4;
+    --surface:#FFFFFF;
+    --ink:#1F2A22;
+    --ink-soft:#5B6B60;
+    --ink-faint:#8A9690;
+    --line:#DCE3DC;
+    --line-strong:#C3CFC5;
+    --brand:#2F6B4F;
+    --brand-dark:#234F3B;
+    --brand-tint:#E7F0EA;
+    --amber:#C98A2C;
+    --amber-tint:#FBF0DF;
+    --rust:#B3462C;
+    --rust-tint:#F8E7E1;
+    --steel:#35618C;
+    --steel-tint:#E4ECF3;
+    --violet:#6B4B8A;
+    --violet-tint:#EFE9F5;
+    --teal:#2E7D8C;
+    --teal-tint:#E1EEF0;
+    --brown:#8B5E34;
+    --brown-tint:#F2E8DC;
+    --gray:#8A8F98;
+    --gray-tint:#ECEDEF;
+    --completed:#4B5F52;
+    --completed-tint:#E9EDEA;
+    --radius:6px;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;}
+  #app{min-height:100vh;}
+  button{font-family:inherit;cursor:pointer;}
+  input,textarea,select{font-family:inherit;}
+  .tabular{font-variant-numeric:tabular-nums;font-family:var(--mono);}
+
+  .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-card{width:100%;max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:36px 32px;animation:riseIn .4s ease;}
+  @keyframes riseIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  .login-mark{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .login-mark .dot{width:10px;height:10px;border-radius:2px;background:var(--brand);}
+  .login-mark span{font-weight:700;font-size:15px;letter-spacing:.2px;}
+  .login-sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 22px 0;line-height:1.5;}
+  .user-list{display:flex;flex-direction:column;gap:8px;}
+  .user-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;background:var(--surface);text-align:left;transition:border-color .15s ease, background .15s ease;}
+  .user-row:hover{border-color:var(--line-strong);background:#FBFCFB;}
+  .user-row.selected{border-color:var(--brand);background:var(--brand-tint);}
+  .avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;}
+  .user-meta{flex:1;min-width:0;}
+  .user-name{font-size:13.5px;font-weight:600;}
+  .user-role{font-size:12px;color:var(--ink-soft);}
+  .role-pill{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap;}
+  .login-enter{margin-top:16px;width:100%;background:var(--brand);color:#fff;border:none;padding:11px;border-radius:var(--radius);font-size:13.5px;font-weight:600;transition:background .15s ease;}
+  .login-enter:disabled{background:var(--gray-tint);color:var(--ink-faint);cursor:not-allowed;}
+  .login-enter:not(:disabled):hover{background:var(--brand-dark);}
+  .login-note{margin-top:14px;font-size:11.5px;color:var(--ink-faint);line-height:1.5;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 22px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap;gap:10px;}
+  .brand-mark{display:flex;align-items:center;gap:9px;}
+  .brand-mark .dot{width:9px;height:9px;border-radius:2px;background:var(--brand);}
+  .brand-mark .title{font-weight:700;font-size:14.5px;}
+  .brand-mark .subtitle{font-size:12px;color:var(--ink-faint);margin-left:8px;padding-left:8px;border-left:1px solid var(--line);}
+  .topbar-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .view-toggle{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .view-toggle button{background:var(--surface);border:none;padding:7px 14px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .view-toggle button.active{background:var(--brand);color:#fff;}
+  .who{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .who .avatar{width:26px;height:26px;font-size:10.5px;}
+  .who-name{font-weight:600;}
+  .who-role{color:var(--ink-faint);}
+  .logout-btn{background:none;border:1px solid var(--line);border-radius:var(--radius);padding:6px 11px;font-size:12px;color:var(--ink-soft);}
+  .logout-btn:hover{border-color:var(--line-strong);color:var(--ink);}
+  .new-btn{background:var(--brand);color:#fff;border:none;border-radius:var(--radius);padding:8px 14px;font-size:12.5px;font-weight:600;}
+  .new-btn:hover{background:var(--brand-dark);}
+
+  .bulk-bar{background:var(--brand-dark);color:#fff;padding:10px 22px;display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:10px;flex-wrap:wrap;}
+  .btn-ghost-invert{background:none;border:1px solid rgba(255,255,255,.5);color:#fff;padding:7px 13px;border-radius:4px;font-size:12px;font-weight:600;}
+  .btn-ghost-invert:hover{border-color:#fff;}
+  .btn-primary-invert{background:#fff;color:var(--brand-dark);border:1px solid #fff;padding:7px 13px;border-radius:4px;font-size:12px;font-weight:700;}
+  .btn-primary-invert:hover{background:#EDEDED;}
+
+  .board-wrap{padding:18px 22px 40px;}
+  .board{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;align-items:flex-start;}
+  .column{flex:0 0 260px;background:#F0F3EF;border-radius:var(--radius);padding:10px;min-height:120px;}
+  .column-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px 4px;}
+  .column-head-left{display:flex;align-items:center;gap:7px;}
+  .status-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+  .column-title{font-size:12px;font-weight:700;}
+  .column-count{font-size:11px;color:var(--ink-soft);background:var(--surface);border-radius:20px;padding:1px 7px;font-family:var(--mono);}
+  .column-total{font-size:10.5px;color:var(--ink-faint);font-family:var(--mono);margin-top:2px;padding-left:15px;min-height:14px;}
+  .cards{display:flex;flex-direction:column;gap:7px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--card-color, var(--gray));border-radius:4px;padding:9px 10px;text-align:left;transition:border-color .15s ease, transform .1s ease;width:100%;cursor:pointer;}
+  .card:hover{border-color:var(--line-strong);border-left-color:var(--card-color, var(--gray));transform:translateY(-1px);}
+  .card:focus{outline:2px solid var(--brand);outline-offset:1px;}
+  .card-top{display:flex;justify-content:space-between;align-items:center;gap:6px;}
+  .card-top-left{display:flex;align-items:center;gap:6px;}
+  .pend-check, .pend-check-table{width:15px;height:15px;cursor:pointer;flex-shrink:0;}
+  .card-folio{font-size:10.5px;color:var(--ink-faint);font-family:var(--mono);}
+  .card-area{font-size:9.5px;color:var(--ink-soft);background:var(--gray-tint);padding:1px 6px;border-radius:20px;}
+  .card-item{font-size:12.5px;font-weight:600;margin-top:5px;line-height:1.3;}
+  .card-row{display:flex;justify-content:space-between;align-items:center;margin-top:7px;font-size:11px;color:var(--ink-soft);}
+  .card-proveedor{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;}
+  .card-total{font-family:var(--mono);font-weight:600;color:var(--ink);}
+  .card-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:7px;}
+  .card-date{font-size:10px;color:var(--ink-faint);font-family:var(--mono);}
+  .card-owner{width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;}
+  .empty-col{font-size:11.5px;color:var(--ink-faint);text-align:center;padding:16px 6px;border:1px dashed var(--line-strong);border-radius:4px;}
+
+  .table-wrap{padding:18px 22px 40px;}
+  .table-controls{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+  .search-input, .filter-select{border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;font-size:12.5px;background:var(--surface);color:var(--ink);}
+  .search-input{width:220px;}
+  .search-input:focus, .filter-select:focus{outline:none;border-color:var(--brand);}
+  .table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);}
+  .oc-table{width:100%;border-collapse:collapse;background:var(--surface);font-size:12.5px;}
+  .oc-table th{text-align:left;padding:9px 12px;background:#F0F3EF;color:var(--ink-soft);font-weight:600;font-size:11.5px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap;}
+  .oc-table th:hover{color:var(--ink);}
+  .oc-table th .arrow{font-size:9px;margin-left:3px;color:var(--ink-faint);}
+  .oc-table td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap;}
+  .oc-table tr:last-child td{border-bottom:none;}
+  .oc-table tbody tr{transition:background .12s ease;}
+  .oc-table tbody tr:hover{background:#FAFBF9;cursor:pointer;}
+  .oc-table td.num{font-family:var(--mono);text-align:right;}
+  .status-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .status-badge .status-dot{width:6px;height:6px;}
+
+  .seguimiento-table td{padding:5px 7px;}
+  .seg-input, .seg-select{width:100%;min-width:96px;border:1px solid var(--line);border-radius:4px;padding:6px 7px;font-size:12px;background:var(--surface);color:var(--ink);}
+  .seg-input:focus, .seg-select:focus{outline:none;border-color:var(--brand);background:var(--brand-tint);}
+  .seg-input.num-input{font-family:var(--mono);}
+  .seguimiento-table tbody tr:hover{background:transparent;cursor:default;}
+  .history-row{cursor:pointer;}
+
+  .overlay{position:fixed;inset:0;background:rgba(31,42,34,.4);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;animation:fadeIn .15s ease;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  .modal{background:var(--surface);border-radius:var(--radius);width:100%;max-width:580px;max-height:88vh;overflow-y:auto;animation:riseIn .2s ease;}
+  .modal-head{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 22px 16px;border-bottom:1px solid var(--line);}
+  .modal-head h2{margin:0;font-size:16px;}
+  .modal-head .folio{font-size:11.5px;color:var(--ink-faint);font-family:var(--mono);margin-top:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .modal-close{background:none;border:none;font-size:18px;color:var(--ink-faint);line-height:1;padding:4px;}
+  .modal-close:hover{color:var(--ink);}
+  .modal-body{padding:18px 22px;}
+  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .field{margin-bottom:13px;}
+  .field.full{grid-column:1/-1;}
+  .field label{display:block;font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:5px;}
+  .field input, .field select, .field textarea{width:100%;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;color:var(--ink);background:var(--surface);}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--brand);}
+  .field input:disabled, .field textarea:disabled{background:#F7F8F6;color:var(--ink-soft);}
+  .field .readonly-val{font-size:13px;padding:8px 0;color:var(--ink);}
+  .field textarea{resize:vertical;min-height:56px;}
+  .checkbox-row{display:flex;align-items:center;gap:8px;padding:8px 0;}
+  .checkbox-row input{width:auto;}
+  .checkbox-row label{margin:0;font-size:13px;color:var(--ink);font-weight:500;}
+  .total-line{display:flex;justify-content:space-between;align-items:center;background:var(--brand-tint);border-radius:4px;padding:10px 14px;margin:4px 0 16px;}
+  .total-line .label{font-size:12px;color:var(--brand-dark);font-weight:600;}
+  .total-line .value{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--brand-dark);}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 22px;border-top:1px solid var(--line);flex-wrap:wrap;}
+  .btn{padding:9px 16px;border-radius:4px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);}
+  .btn:hover{border-color:var(--line-strong);}
+  .btn:disabled{opacity:.6;cursor:not-allowed;}
+  .btn-primary{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .btn-primary:hover{background:var(--brand-dark);border-color:var(--brand-dark);}
+  .btn-reject{background:var(--rust);border-color:var(--rust);color:#fff;}
+  .btn-reject:hover{background:#953A24;}
+  .btn-ghost{background:none;border:none;color:var(--ink-soft);}
+  .btn-ghost:hover{color:var(--ink);}
+  .history-note{background:var(--gray-tint);border-radius:4px;padding:11px 13px;font-size:12px;color:var(--ink-soft);line-height:1.6;margin-bottom:14px;}
+  .history-note b{color:var(--ink);}
+  .divider{border:none;border-top:1px solid var(--line);margin:16px 0;}
+  .section-label{font-size:11.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;}
+  .helper-text{font-size:11.5px;color:var(--ink-faint);line-height:1.5;margin-top:2px;}
+
+  ::-webkit-scrollbar{height:8px;width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
+  onSnapshot, runTransaction, writeBatch, serverTimestamp, arrayUnion, arrayRemove
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+
+/* ====== PEGA AQUI TU CONFIGURACION DE FIREBASE ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAdA8amaT-RvDdTku-gb8DkqxUTYLDNFYU",
+  authDomain: "polyagro-compras.firebaseapp.com",
+  projectId: "polyagro-compras",
+  storageBucket: "polyagro-compras.firebasestorage.app",
+  messagingSenderId: "892711321692",
+  appId: "1:892711321692:web:1dbdefd19f441b6bb2a699"
+};
+/* ===================================================== */
+
+const FIREBASE_READY = firebaseConfig.apiKey !== "TU_API_KEY";
+let app, auth, db, storage;
+if(FIREBASE_READY){
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+}
+
+/* ============================ CONSTANTES ============================ */
+const AVATAR_COLORS = ['#2F6B4F','#35618C','#C98A2C','#B3462C','#6B4B8A'];
+function avatarColor(name){ let h=0; for(let i=0;i<name.length;i++) h = name.charCodeAt(i) + ((h<<5)-h); return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length]; }
+function initials(name){ return name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+
+const ROLE_LABEL = {solicitante:'Solicitante', aprobador:'Aprobador', compras:'Compras', almacenista:'Almacenista'};
+const ROLE_COLOR = {solicitante:{bg:'var(--steel-tint)',fg:'var(--steel)'}, aprobador:{bg:'var(--amber-tint)',fg:'var(--amber)'}, compras:{bg:'var(--brand-tint)',fg:'var(--brand)'}, almacenista:{bg:'var(--violet-tint)',fg:'var(--violet)'}};
+const AREAS_DEFAULT = ['Telares','Planos','Producción','Mantenimiento','Bodega','Administración'];
+let areasList = AREAS_DEFAULT.slice();
+
+async function addArea(nombre){
+  await setDoc(doc(db,'configuracion','areas'), { lista: arrayUnion(nombre) }, { merge:true });
+}
+async function removeArea(nombre){
+  await updateDoc(doc(db,'configuracion','areas'), { lista: arrayRemove(nombre) });
+}
+
+async function subirCotizacion(orderId, file){
+  const path = `cotizaciones/${orderId}_${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+  await updateDoc(doc(db,'solicitudes', orderId), {
+    cotizacionUrl: url, cotizacionRuta: path, cotizacionNombre: file.name,
+    cotizacionSubidaPor: state.currentUser.nombre, cotizacionSubidaEn: nowISO(),
+    sinCotizacion: false,
+  });
+}
+async function marcarSinCotizacion(orderId){
+  await updateDoc(doc(db,'solicitudes', orderId), { sinCotizacion: true, cotizacionUrl: null, cotizacionRuta: null, cotizacionNombre: null, cotizacionSubidaPor: null, cotizacionSubidaEn: null });
+}
+async function quitarCotizacion(orderId, rutaAnterior){
+  if(rutaAnterior){ try{ await deleteObject(ref(storage, rutaAnterior)); }catch(err){ console.warn('No se pudo borrar el archivo anterior', err); } }
+  await updateDoc(doc(db,'solicitudes', orderId), { sinCotizacion: false, cotizacionUrl: null, cotizacionRuta: null, cotizacionNombre: null, cotizacionSubidaPor: null, cotizacionSubidaEn: null });
+}
+const UNIDADES_DEFAULT = ['unidad','bulto','caja','kg','litro','galón','rollo','set','kit','bolsa','servicio','viaje','metro'];
+let unidadesList = UNIDADES_DEFAULT.slice();
+let whatsappContactos = [];
+
+async function addUnidad(nombre){
+  await setDoc(doc(db,'configuracion','unidades'), { lista: arrayUnion(nombre) }, { merge:true });
+}
+async function removeUnidad(nombre){
+  await updateDoc(doc(db,'configuracion','unidades'), { lista: arrayRemove(nombre) });
+}
+async function addWhatsappContacto(etiqueta, numero){
+  await setDoc(doc(db,'configuracion','whatsapp'), { contactos: arrayUnion({etiqueta, numero}) }, { merge:true });
+}
+async function removeWhatsappContacto(contacto){
+  await updateDoc(doc(db,'configuracion','whatsapp'), { contactos: arrayRemove(contacto) });
+}
+
+const ESTADOS = [
+  {key:'borrador',    label:'Borrador',               color:'var(--gray)',      tint:'var(--gray-tint)'},
+  {key:'buscando_cotizacion', label:'Buscando cotización', color:'var(--teal)', tint:'var(--teal-tint)'},
+  {key:'pendiente',   label:'Pendiente de aprobación', color:'var(--amber)',     tint:'var(--amber-tint)'},
+  {key:'compra',      label:'En compras',              color:'var(--steel)',    tint:'var(--steel-tint)'},
+  {key:'por_recibir', label:'Por recibir',             color:'var(--violet)',   tint:'var(--violet-tint)'},
+  {key:'completada',  label:'Completada',              color:'var(--completed)',tint:'var(--completed-tint)'},
+  {key:'rechazado',   label:'Rechazado',               color:'var(--rust)',     tint:'var(--rust-tint)'},
+  {key:'cancelada',   label:'Cancelada',               color:'var(--brown)',    tint:'var(--brown-tint)'},
+];
+function estadoInfo(key){ return ESTADOS.find(e=>e.key===key) || ESTADOS[0]; }
+
+const ESTADO_COMPRA = [
+  {key:'cotizando',      label:'Cotizando',      color:'var(--amber)', tint:'var(--amber-tint)'},
+  {key:'pendiente_pago', label:'Pendiente pago', color:'var(--rust)',  tint:'var(--rust-tint)'},
+  {key:'en_transito',    label:'En tránsito',    color:'var(--steel)', tint:'var(--steel-tint)'},
+  {key:'cancelado',      label:'Cancelado',      color:'var(--brown)', tint:'var(--brown-tint)'},
+  {key:'entrega_ok',     label:'Entrega OK',     color:'var(--brand)', tint:'var(--brand-tint)'},
+  {key:'completado',     label:'Completado',     color:'var(--completed)', tint:'var(--completed-tint)'},
+];
+const ESTADO_COMPRA_EDITABLE = ESTADO_COMPRA.filter(ec=>ec.key!=='entrega_ok' && ec.key!=='completado');
+function estadoCompraInfo(key){ return ESTADO_COMPRA.find(e=>e.key===key) || ESTADO_COMPRA[0]; }
+
+/* ============================ DATOS EN VIVO (Firestore) ============================ */
+let usersList = [];
+let orders = [];
+
+/* ============================ ESTADO LOCAL DE UI ============================ */
+let state = {
+  currentUser: null,
+  selectedLoginId: null,
+  loginError: null,
+  view: 'kanban',
+  detailOrderId: null,
+  newOrderOpen: false,
+  bulkApproveOpen: false,
+  selectedPendingIds: new Set(),
+  whatsappNumber: '573000000000',
+  tableSort: {col:'fechaSolicitud', dir:'desc'},
+  tableFilterEstado: 'todos',
+  tableSearch: '',
+};
+
+const $app = document.getElementById('app');
+
+/* ============================ HELPERS ============================ */
+function fmtCOP(n){ return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n); }
+function fmtDate(d){ if(!d) return '—'; const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}); }
+function fmtDateTime(d){ if(!d) return '—'; const dt = new Date(d); return dt.toLocaleString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function nowISO(){ return new Date().toISOString(); }
+function metaAprobada(o){ return (o.cantidadAprobada!=null && o.cantidadAprobada!=='') ? o.cantidadAprobada : o.cantidad; }
+function effectiveCantidad(o){ return (o.cantidadRecibida!=null && o.cantidadRecibida!=='') ? o.cantidadRecibida : metaAprobada(o); }
+function pendienteCompra(o){ if(o.cantidadRecibida==null) return 0; const p = metaAprobada(o) - o.cantidadRecibida; return p>0 ? p : 0; }
+function listaFacturas(o){
+  if(Array.isArray(o.facturas) && o.facturas.length) return o.facturas;
+  if(o.numeroFactura) return [{numero:o.numeroFactura, fecha:o.fechaFactura||''}];
+  return [];
+}
+function total(o){ return (o.precioUnitario||0) * effectiveCantidad(o); }
+function hasCompraInfo(o){ return !!o.proveedor; }
+function ownOrders(o, user){ return o.solicitante === user.nombre; }
+
+function waFieldMarkup(inputId, selectId){
+  if(whatsappContactos.length){
+    const waMatch = whatsappContactos.find(c=>c.numero===state.whatsappNumber);
+    const waDefault = waMatch ? waMatch.numero : whatsappContactos[0].numero;
+    return `
+      <select id="${selectId}">
+        ${whatsappContactos.map(c=>`<option value="${c.numero}" ${c.numero===waDefault?'selected':''}>${c.etiqueta} (${c.numero})</option>`).join('')}
+        <option value="__custom__">Otro número...</option>
+      </select>
+      <input id="${inputId}" value="${waDefault}" style="display:none;margin-top:8px;" placeholder="Escribe el número">
+    `;
+  }
+  return `<input id="${inputId}" value="${state.whatsappNumber}" placeholder="Ej. 573001234567">`;
+}
+function wireWaField(inputId, selectId){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  sel.addEventListener('change', ()=>{
+    const inp = document.getElementById(inputId);
+    if(sel.value==='__custom__'){ inp.style.display='block'; inp.value=''; inp.focus(); }
+    else { inp.style.display='none'; inp.value = sel.value; }
+  });
+}
+
+function sendWhatsAppNotification(items, number){
+  const fechaTxt = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});
+  let msg = `*Polyagro - Aprobacion de compras*\nAprobado por: ${state.currentUser.nombre}\nFecha: ${fechaTxt}\n\n`;
+  items.forEach((o,i)=>{ msg += `${i+1}. ${o.folio} - ${o.producto}\n   Cantidad: ${o.cantidad} ${o.unidadMedida}\n   Obs: ${o.observaciones || 'Sin observaciones'}\n\n`; });
+  const cleanNumber = number.replace(/[^0-9]/g,'');
+  window.open(`https://wa.me/${cleanNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+async function nextFolio(){
+  const counterRef = doc(db, 'contadores', 'solicitudes');
+  const n = await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(counterRef);
+    const actual = snap.exists() ? (snap.data().valor || 0) : 0;
+    const siguiente = actual + 1;
+    tx.set(counterRef, { valor: siguiente });
+    return siguiente;
+  });
+  return 'OC-' + String(n).padStart(4,'0');
+}
+
+async function runAction(btn, fn){
+  if(btn){ btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = 'Guardando...'; }
+  try{
+    const r = await fn();
+    return r===undefined ? true : r;
+  } catch(err){
+    console.error(err);
+    alert('No se pudo guardar en la base de datos: ' + err.message);
+    return false;
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = btn.dataset.oldText; }
+  }
+}
+
+function render(){
+  if(!state.currentUser){ renderLogin(); return; }
+  if(state.currentUser.claveTemporal){ renderChangePassword(); return; }
+  renderApp();
+}
+
+function renderChangePassword(){
+  const u = state.currentUser;
+  $app.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="login-mark"><div class="dot"></div><span>Polyagro · Compras</span></div>
+        <p class="login-sub">Hola, ${u.nombre}. Tu contraseña es temporal — crea una nueva antes de continuar.</p>
+        <div class="field full"><label>Nueva contraseña</label><input type="password" id="newPass1" placeholder="Nueva contraseña"></div>
+        <div class="field full"><label>Confirmar contraseña</label><input type="password" id="newPass2" placeholder="Repite la contraseña"></div>
+        <div id="changePassError" class="helper-text" style="color:var(--rust);"></div>
+        <button class="login-enter" id="changePassBtn">Guardar y continuar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('changePassBtn').addEventListener('click', async (e)=>{
+    const p1 = document.getElementById('newPass1').value;
+    const p2 = document.getElementById('newPass2').value;
+    const errEl = document.getElementById('changePassError');
+    errEl.textContent = '';
+    if(!p1 || p1.length<4){ errEl.textContent = 'La contraseña debe tener al menos 4 caracteres.'; return; }
+    if(p1!==p2){ errEl.textContent = 'Las contraseñas no coinciden.'; return; }
+    await runAction(e.target, async ()=>{
+      await updateDoc(doc(db,'usuarios', u.id), { clave: p1, claveTemporal: false });
+    });
+  });
+}
+
+/* ============================ FIREBASE: CONEXION Y LISTENERS ============================ */
+async function bootstrap(){
+  if(!FIREBASE_READY){ renderConfigNeeded(); return; }
+  try{ await signInAnonymously(auth); }
+  catch(err){ renderConfigNeeded('No se pudo conectar con Firebase: ' + err.message); return; }
+
+  onSnapshot(collection(db,'usuarios'), snap=>{
+    usersList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(state.currentUser){
+      const fresh = usersList.find(u=>u.id===state.currentUser.id);
+      state.currentUser = fresh || null;
+    }
+    render();
+  }, err=>console.error(err));
+
+  onSnapshot(doc(db,'configuracion','unidades'), snap=>{
+    if(snap.exists() && Array.isArray(snap.data().lista) && snap.data().lista.length){
+      unidadesList = snap.data().lista;
+    } else {
+      unidadesList = UNIDADES_DEFAULT.slice();
+      setDoc(doc(db,'configuracion','unidades'), { lista: UNIDADES_DEFAULT }).catch(()=>{});
+    }
+    render();
+  }, err=>console.error(err));
+
+  onSnapshot(doc(db,'configuracion','whatsapp'), snap=>{
+    whatsappContactos = (snap.exists() && Array.isArray(snap.data().contactos)) ? snap.data().contactos : [];
+    render();
+  }, err=>console.error(err));
+
+  onSnapshot(doc(db,'configuracion','areas'), snap=>{
+    if(snap.exists() && Array.isArray(snap.data().lista) && snap.data().lista.length){
+      areasList = snap.data().lista;
+    } else {
+      areasList = AREAS_DEFAULT.slice();
+      setDoc(doc(db,'configuracion','areas'), { lista: AREAS_DEFAULT }).catch(()=>{});
+    }
+    render();
+  }, err=>console.error(err));
+
+  onSnapshot(collection(db,'solicitudes'), snap=>{
+    orders = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    render();
+  }, err=>console.error(err));
+
+  render();
+}
+
+function renderConfigNeeded(extra){
+  $app.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="login-mark"><div class="dot"></div><span>Polyagro · Compras</span></div>
+        <p class="login-sub">Falta terminar de configurar Firebase para esta app.</p>
+        <div class="history-note">
+          1. Crea un proyecto en console.firebase.google.com.<br>
+          2. Activa Firestore Database y Authentication (metodo Anonimo).<br>
+          3. Copia tu firebaseConfig y pegalo en el archivo HTML donde dice "PEGA AQUI TU CONFIGURACION".<br>
+          4. Aplica las reglas de seguridad de Firestore que te compartieron.<br>
+          5. Crea manualmente el primer usuario (rol compras) en la coleccion "usuarios".
+          ${extra ? `<br><br><b>Detalle:</b> ${extra}` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================ LOGIN ============================ */
+function renderLogin(){
+  const noUsers = usersList.length===0;
+  $app.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="login-mark"><div class="dot"></div><span>Polyagro · Compras</span></div>
+        <p class="login-sub">Selecciona tu usuario e ingresa tu contraseña.</p>
+        ${noUsers ? `<div class="history-note">Aún no hay usuarios creados. El primer usuario (rol Compras) debe crearse manualmente en la consola de Firebase, colección <b>usuarios</b>, con los campos: nombre, area, rol, clave.</div>` : `
+        <div class="user-list" id="userList">
+          ${usersList.map(u=>`
+            <button class="user-row ${state.selectedLoginId===u.id?'selected':''}" data-uid="${u.id}">
+              <div class="avatar" style="background:${avatarColor(u.nombre)}">${initials(u.nombre)}</div>
+              <div class="user-meta"><div class="user-name">${u.nombre}</div><div class="user-role">${u.cargo||u.area||''}</div></div>
+              <span class="role-pill" style="background:${ROLE_COLOR[u.rol].bg};color:${ROLE_COLOR[u.rol].fg}">${ROLE_LABEL[u.rol]}</span>
+            </button>
+          `).join('')}
+        </div>
+        ${state.selectedLoginId ? `
+          <div class="field full" style="margin-top:14px;">
+            <label>Contraseña</label>
+            <input type="password" id="loginPass" placeholder="Contraseña">
+          </div>
+        ` : ''}
+        ${state.loginError ? `<div class="helper-text" style="color:var(--rust);">${state.loginError}</div>` : ''}
+        <button class="login-enter" id="enterBtn" ${state.selectedLoginId?'':'disabled'}>Entrar</button>
+        `}
+      </div>
+    </div>
+  `;
+  if(noUsers) return;
+  document.querySelectorAll('.user-row').forEach(el=>{ el.addEventListener('click', ()=>{ state.selectedLoginId = el.dataset.uid; state.loginError=null; render(); }); });
+  const passInput = document.getElementById('loginPass');
+  if(passInput){ passInput.focus(); passInput.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); }); }
+  const enterBtn = document.getElementById('enterBtn');
+  if(enterBtn) enterBtn.addEventListener('click', doLogin);
+}
+
+function doLogin(){
+  const u = usersList.find(x=>x.id===state.selectedLoginId);
+  const passInput = document.getElementById('loginPass');
+  const pass = passInput ? passInput.value : '';
+  if(!u || pass !== u.clave){ state.loginError = 'Contraseña incorrecta.'; render(); return; }
+  state.currentUser = u;
+  state.loginError = null;
+  state.view = u.rol==='compras' ? 'seguimiento' : 'kanban';
+  render();
+}
+
+/* ============================ APP SHELL ============================ */
+function renderApp(){
+  document.querySelectorAll('.overlay').forEach(el => el.remove());
+  const u = state.currentUser;
+  const showBulkBar = u.rol==='aprobador' && state.selectedPendingIds.size>0;
+  $app.innerHTML = `
+    <div class="topbar">
+      <div class="brand-mark"><div class="dot"></div><span class="title">Polyagro · Compras</span><span class="subtitle">${ROLE_LABEL[u.rol]}</span></div>
+      <div class="topbar-right">
+        ${(u.rol==='solicitante'||u.rol==='almacenista') ? `<button class="new-btn" id="newOrderBtn">+ Nueva solicitud</button>` : ''}
+        <div class="view-toggle">
+          <button data-v="kanban" class="${state.view==='kanban'?'active':''}">Kanban</button>
+          <button data-v="tabla" class="${state.view==='tabla'?'active':''}">Tabla</button>
+          ${u.rol==='compras' ? `<button data-v="seguimiento" class="${state.view==='seguimiento'?'active':''}">Seguimiento</button><button data-v="usuarios" class="${state.view==='usuarios'?'active':''}">Usuarios</button><button data-v="papelera" class="${state.view==='papelera'?'active':''}">Papelera</button>` : ''}
+        </div>
+        <div class="who">
+          <div class="avatar" style="background:${avatarColor(u.nombre)}">${initials(u.nombre)}</div>
+          <div><div class="who-name">${u.nombre}</div><div class="who-role">${u.cargo||u.area||''}</div></div>
+        </div>
+        <button class="logout-btn" id="logoutBtn">Salir</button>
+      </div>
+    </div>
+    ${showBulkBar ? `
+      <div class="bulk-bar">
+        <span>${state.selectedPendingIds.size} solicitud(es) pendiente(s) seleccionada(s)</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-ghost-invert" id="clearSelection">Limpiar selección</button>
+          <button class="btn-primary-invert" id="openBulkApprove">Aprobar seleccionadas y notificar por WhatsApp</button>
+        </div>
+      </div>` : ''}
+    <div id="viewMount"></div>
+  `;
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{ state.currentUser=null; state.selectedLoginId=null; state.selectedPendingIds.clear(); render(); });
+  document.querySelectorAll('.view-toggle button').forEach(b=>{ b.addEventListener('click', ()=>{ state.view=b.dataset.v; render(); }); });
+  const newBtn = document.getElementById('newOrderBtn');
+  if(newBtn) newBtn.addEventListener('click', ()=>{ state.newOrderOpen=true; render(); });
+  const clearSel = document.getElementById('clearSelection');
+  if(clearSel) clearSel.addEventListener('click', ()=>{ state.selectedPendingIds.clear(); render(); });
+  const openBulk = document.getElementById('openBulkApprove');
+  if(openBulk) openBulk.addEventListener('click', ()=>{ state.bulkApproveOpen=true; render(); });
+
+  if(state.view==='kanban') renderKanban();
+  else if(state.view==='tabla') renderTable();
+  else if(state.view==='seguimiento' && u.rol==='compras') renderSeguimiento();
+  else if(state.view==='usuarios' && u.rol==='compras') renderUsuarios();
+  else if(state.view==='papelera' && u.rol==='compras') renderPapelera();
+  else renderKanban();
+
+  if(state.detailOrderId){
+    const o = orders.find(x=>x.id===state.detailOrderId);
+    if(o) renderDetailModal(o); else state.detailOrderId=null;
+  }
+  if(state.newOrderOpen) renderNewOrderModal();
+  if(state.bulkApproveOpen) renderBulkApproveModal();
+}
+
+/* ============================ KANBAN ============================ */
+function renderKanban(){
+  const u = state.currentUser;
+  const mount = document.getElementById('viewMount');
+  mount.innerHTML = `
+    <div class="board-wrap">
+      <div class="board">
+        ${ESTADOS.map(est=>{
+          const items = orders.filter(o=>o.estado===est.key && !o.eliminado).sort((a,b)=> (b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
+          const withPrice = items.filter(o=>o.precioUnitario>0);
+          const sum = withPrice.reduce((s,o)=>s+total(o),0);
+          const selectable = u.rol==='aprobador' && est.key==='pendiente';
+          return `
+          <div class="column">
+            <div class="column-head">
+              <div class="column-head-left"><div class="status-dot" style="background:${est.color}"></div><div class="column-title">${est.label}</div></div>
+              <div class="column-count">${items.length}</div>
+            </div>
+            <div class="column-total">${withPrice.length ? fmtCOP(sum) : ''}</div>
+            <div class="cards" style="margin-top:8px;">
+              ${items.length ? items.map(o=>cardHtml(o,est,selectable)).join('') : `<div class="empty-col">Sin órdenes</div>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  mount.querySelectorAll('.card').forEach(el=>{ el.addEventListener('click', ()=>{ state.detailOrderId = el.dataset.id; render(); }); });
+  mount.querySelectorAll('.pend-check').forEach(el=>{
+    el.addEventListener('click', e=> e.stopPropagation());
+    el.addEventListener('change', ()=>{
+      const id = el.dataset.id;
+      if(el.checked) state.selectedPendingIds.add(id); else state.selectedPendingIds.delete(id);
+      render();
+    });
+  });
+}
+
+function cardHtml(o, est, selectable){
+  const selected = state.selectedPendingIds.has(o.id);
+  const secondRow = hasCompraInfo(o)
+    ? `<span class="card-proveedor">${o.proveedor}</span><span class="card-total">${fmtCOP(total(o))}</span>`
+    : `<span class="card-proveedor">${effectiveCantidad(o)} ${o.unidadMedida}</span><span>Por cotizar</span>`;
+  const compraBadge = (o.estado==='compra' && o.estadoCompra) ? (()=>{
+    const ec = estadoCompraInfo(o.estadoCompra);
+    return `<div style="margin-top:6px;"><span class="status-badge" style="background:${ec.tint};color:${ec.color};font-size:9.5px;padding:2px 7px;"><span class="status-dot" style="background:${ec.color};width:5px;height:5px;"></span>${ec.label}</span></div>`;
+  })() : '';
+  return `
+    <div class="card" data-id="${o.id}" style="--card-color:${est.color}" tabindex="0">
+      <div class="card-top">
+        <div class="card-top-left">
+          ${selectable ? `<input type="checkbox" class="pend-check" data-id="${o.id}" ${selected?'checked':''}>` : ''}
+          <span class="card-folio">${o.folio}</span>
+        </div>
+        <span class="card-area">${o.area}</span>
+      </div>
+      <div class="card-item">${o.producto}</div>
+      <div class="card-row">${secondRow}</div>
+      ${compraBadge}
+      <div class="card-bottom">
+        <span class="card-date">${fmtDateTime(o.fechaSolicitud)}</span>
+        <div class="card-owner" style="background:${avatarColor(o.solicitante)}" title="${o.solicitante}">${initials(o.solicitante)}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================ TABLA ============================ */
+const TABLE_COLS = [
+  {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'}, {key:'area', label:'Área'},
+  {key:'solicitante', label:'Solicitante'}, {key:'cantidad', label:'Cant. / UM', num:true},
+  {key:'proveedor', label:'Proveedor'}, {key:'total', label:'Total', num:true},
+  {key:'estado', label:'Estado'}, {key:'estadoCompra', label:'Estado de compra'}, {key:'fechaSolicitud', label:'Fecha'},
+];
+
+function renderTable(){
+  const u = state.currentUser;
+  const showSelect = u.rol === 'aprobador';
+  const mount = document.getElementById('viewMount');
+  let rows = orders.filter(o=>!o.eliminado);
+  if(state.tableFilterEstado !== 'todos') rows = rows.filter(o=>o.estado===state.tableFilterEstado);
+  if(state.tableSearch.trim()){
+    const q = state.tableSearch.toLowerCase();
+    rows = rows.filter(o => (o.producto||'').toLowerCase().includes(q) || (o.proveedor||'').toLowerCase().includes(q) || (o.folio||'').toLowerCase().includes(q) || (o.area||'').toLowerCase().includes(q));
+  }
+  const {col,dir} = state.tableSort;
+  rows.sort((a,b)=>{
+    let av = col==='total' ? total(a) : a[col]; let bv = col==='total' ? total(b) : b[col];
+    if(typeof av === 'string'){ av=(av||'').toLowerCase(); bv=(bv||'').toLowerCase(); }
+    if(av<bv) return dir==='asc'?-1:1; if(av>bv) return dir==='asc'?1:-1; return 0;
+  });
+
+  mount.innerHTML = `
+    <div class="table-wrap">
+      <div class="table-controls">
+        <input class="search-input" id="searchInput" placeholder="Buscar producto, proveedor, área o folio..." value="${state.tableSearch}">
+        <select class="filter-select" id="filterEstado">
+          <option value="todos" ${state.tableFilterEstado==='todos'?'selected':''}>Todos los estados</option>
+          ${ESTADOS.map(e=>`<option value="${e.key}" ${state.tableFilterEstado===e.key?'selected':''}>${e.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="table-scroll">
+      <table class="oc-table">
+        <thead><tr>${showSelect?'<th style="cursor:default;">Sel.</th>':''}${TABLE_COLS.map(c=>`<th data-col="${c.key}">${c.label}${state.tableSort.col===c.key ? `<span class="arrow">${state.tableSort.dir==='asc'?'▲':'▼'}</span>` : ''}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map(o=>{
+            const est = estadoInfo(o.estado);
+            const checkboxCell = showSelect ? (o.estado==='pendiente' ? `<td><input type="checkbox" class="pend-check-table" data-id="${o.id}" ${state.selectedPendingIds.has(o.id)?'checked':''}></td>` : `<td></td>`) : '';
+            return `
+            <tr data-id="${o.id}">
+              ${checkboxCell}
+              <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.area}</td><td>${o.solicitante}</td>
+              <td class="num">${effectiveCantidad(o)} ${o.unidadMedida}</td><td>${o.proveedor || '—'}</td>
+              <td class="num">${o.precioUnitario ? fmtCOP(total(o)) : '—'}</td>
+              <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
+              <td>${o.estadoCompra ? (()=>{ const ec=estadoCompraInfo(o.estadoCompra); return `<span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span>`; })() : '—'}</td>
+              <td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
+            </tr>`;
+          }).join('') || `<tr><td colspan="${TABLE_COLS.length + (showSelect?1:0)}" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay órdenes que coincidan.</td></tr>`}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+  document.getElementById('searchInput').addEventListener('input', e=>{ state.tableSearch = e.target.value; renderTable(); });
+  document.getElementById('filterEstado').addEventListener('change', e=>{ state.tableFilterEstado = e.target.value; renderTable(); });
+  mount.querySelectorAll('th[data-col]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const col = th.dataset.col;
+      if(state.tableSort.col===col) state.tableSort.dir = state.tableSort.dir==='asc'?'desc':'asc';
+      else state.tableSort = {col, dir:'asc'};
+      renderTable();
+    });
+  });
+  mount.querySelectorAll('tbody tr[data-id]').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
+  mount.querySelectorAll('.pend-check-table').forEach(el=>{
+    el.addEventListener('click', e=>e.stopPropagation());
+    el.addEventListener('change', ()=>{
+      const id = el.dataset.id;
+      if(el.checked) state.selectedPendingIds.add(id); else state.selectedPendingIds.delete(id);
+      render();
+    });
+  });
+}
+
+/* ============================ SEGUIMIENTO DE COMPRAS ============================ */
+function exportarExcel(){
+  if(typeof XLSX === 'undefined'){ alert('No se pudo cargar el módulo de Excel. Revisa tu conexión a internet e inténtalo de nuevo.'); return; }
+  const rows = orders.filter(o=>o.proveedor && o.estado!=='cancelada' && !o.eliminado).sort((a,b)=> (a.fechaSolicitud||'').localeCompare(b.fechaSolicitud||''));
+  const headers = ['Folio','Producto','Área','Solicitante','Cant. solicitada','Cant. aprobada','Cant. recibida','Unidad','Proveedor','Precio unitario','Total','N° de factura','Fecha de factura','Estado','Estado de compra','Fecha de solicitud','Fecha de aprobación','Observaciones aprobación','Fecha de recepción','Recepcionado por','Nació del faltante de','Continúa en'];
+  const aoa = [headers];
+  rows.forEach(o=>{
+    aoa.push([
+      o.folio, o.producto, o.area, o.solicitante, o.cantidad, o.cantidadAprobada ?? '', o.cantidadRecibida ?? '', o.unidadMedida,
+      o.proveedor, o.precioUnitario||0, total(o),
+      listaFacturas(o).map(f=>f.numero).join(' / ') || '',
+      listaFacturas(o).map(f=>f.fecha ? fmtDate(f.fecha) : '').join(' / ') || '',
+      estadoInfo(o.estado).label,
+      o.estadoCompra ? estadoCompraInfo(o.estadoCompra).label : '',
+      o.fechaSolicitud ? fmtDateTime(o.fechaSolicitud) : '',
+      o.fechaAprobacion ? fmtDate(o.fechaAprobacion) : '',
+      o.comentarioAprobacion || '',
+      o.fechaRecepcion ? fmtDateTime(o.fechaRecepcion) : '',
+      o.recepcionadoPor || '',
+      o.ticketOrigenFolio || '',
+      o.ticketDerivadoFolio || '',
+    ]);
+  });
+  const totalGasto = rows.reduce((s,o)=>s+total(o),0);
+  aoa.push([]);
+  aoa.push(['','','','','','','','','','TOTAL GASTADO', totalGasto]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = headers.map(()=>({wch:16}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte compras');
+  XLSX.writeFile(wb, `reporte_compras_polyagro_${today()}.xlsx`);
+}
+
+function renderSeguimiento(){
+  const mount = document.getElementById('viewMount');
+  const buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado).sort((a,b)=> (a.fechaSolicitud||'').localeCompare(b.fechaSolicitud||''));
+  const activos = orders.filter(o=>o.estado==='compra' && !o.eliminado).sort((a,b)=> (a.fechaAprobacion||'').localeCompare(b.fechaAprobacion||''));
+  const pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado).sort((a,b)=> (a.fechaRecepcion||'').localeCompare(b.fechaRecepcion||''));
+  const historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado).sort((a,b)=> (b.fechaAprobacion||'').localeCompare(a.fechaAprobacion||''));
+
+  mount.innerHTML = `
+    <div class="table-wrap">
+      ${buscandoCotizacion.length ? `
+      <div class="section-label">Buscando cotización (${buscandoCotizacion.length})</div>
+      <div class="table-scroll" style="margin-bottom:22px;">
+        <table class="oc-table">
+          <thead><tr>
+            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. / UM</th>
+            <th style="cursor:default;">Solicitante</th><th style="cursor:default;">Área</th><th style="cursor:default;">Fecha solicitud</th>
+            <th style="cursor:default;">Proveedor</th><th style="cursor:default;">Cotización</th><th style="cursor:default;"></th>
+          </tr></thead>
+          <tbody>
+            ${buscandoCotizacion.map(o=>`
+              <tr>
+                <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.cantidad} ${o.unidadMedida}</td>
+                <td>${o.solicitante}</td><td>${o.area}</td><td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
+                <td>${o.proveedor||'—'}</td>
+                <td>${o.cotizacionUrl ? '📎 Adjunta' : (o.sinCotizacion ? 'Sin cotización' : '—')}</td>
+                <td><button class="btn btn-primary" data-abrir-cotizacion="${o.id}" style="padding:5px 10px;font-size:11px;white-space:nowrap;">Gestionar</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
+        <div class="section-label" style="margin-bottom:0;">Seguimiento de compras · activas (${activos.length})</div>
+        <button class="btn btn-primary" id="exportExcelBtn">Exportar reporte Excel</button>
+      </div>
+      <div class="table-scroll">
+        <table class="oc-table seguimiento-table">
+          <thead><tr>
+            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. aprobada</th>
+            <th style="cursor:default;">Ya recibido</th><th style="cursor:default;">Pendiente</th>
+            <th style="cursor:default;">Solicitante</th><th style="cursor:default;">Área</th>
+            <th style="cursor:default;">Fecha solicitud</th><th style="cursor:default;">Fecha aprobación</th><th style="cursor:default;">Observ. aprobación</th>
+            <th style="cursor:default;">Proveedor</th><th style="cursor:default;">Precio unit.</th>
+            <th style="cursor:default;">Total</th><th style="cursor:default;">Observaciones compras</th><th style="cursor:default;">Estado de compra</th><th style="cursor:default;"></th>
+          </tr></thead>
+          <tbody>
+            ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="16" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-label" style="margin:22px 0 8px;">Pendientes de facturar (${pendientesFactura.length})</div>
+      <div class="table-scroll">
+        <table class="oc-table seguimiento-table">
+          <thead><tr>
+            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. / UM</th><th style="cursor:default;">Proveedor</th>
+            <th style="cursor:default;">Precio unit.</th><th style="cursor:default;">Total</th>
+            <th style="cursor:default;">Recepcionado por</th><th style="cursor:default;">Fecha recepción</th>
+            <th style="cursor:default;"></th>
+          </tr></thead>
+          <tbody>
+            ${pendientesFactura.length ? pendientesFactura.map(o=>`
+              <tr data-id="${o.id}">
+                <td class="tabular">${o.folio}</td><td>${o.producto}</td>
+                <td class="tabular">${o.cantidadRecibida ?? effectiveCantidad(o)} ${o.unidadMedida}</td>
+                <td><input type="text" class="seg-input" data-id="${o.id}" data-field="proveedor" value="${o.proveedor||''}" placeholder="Proveedor"></td>
+                <td><input type="number" class="seg-input num-input" data-id="${o.id}" data-field="precioUnitario" value="${o.precioUnitario||''}" min="0" placeholder="0"></td>
+                <td class="num tabular">${o.precioUnitario?fmtCOP(total(o)):'—'}</td>
+                <td>${o.recepcionadoPor||'—'}</td><td class="tabular">${fmtDateTime(o.fechaRecepcion)}</td>
+                <td><button class="btn btn-primary" data-abrir-factura="${o.id}" style="padding:5px 10px;font-size:11px;white-space:nowrap;">Agregar factura</button></td>
+              </tr>
+            `).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay pedidos recibidos a la espera de factura.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      ${historial.length ? `
+        <div class="section-label" style="margin:22px 0 8px;">Historial reciente</div>
+        <div class="table-scroll">
+          <table class="oc-table">
+            <thead><tr><th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Proveedor</th><th style="cursor:default;">Total</th><th style="cursor:default;">Estado de compra</th><th style="cursor:default;">Estado general</th></tr></thead>
+            <tbody>
+              ${historial.slice(0,10).map(o=>{
+                const ec = estadoCompraInfo(o.estadoCompra); const est = estadoInfo(o.estado);
+                return `<tr class="history-row" data-id="${o.id}">
+                  <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.proveedor||'—'}</td>
+                  <td class="num">${o.precioUnitario?fmtCOP(total(o)):'—'}</td>
+                  <td><span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span></td>
+                  <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  wireSeguimientoInputs();
+  document.getElementById('exportExcelBtn').addEventListener('click', exportarExcel);
+  mount.querySelectorAll('.history-row').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
+  mount.querySelectorAll('button[data-abrir-factura]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.abrirFactura; render(); });
+  });
+  mount.querySelectorAll('button[data-abrir-cotizacion]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.abrirCotizacion; render(); });
+  });
+}
+
+function seguimientoRow(o){
+  const pend = pendienteCompra(o);
+  return `
+    <tr data-id="${o.id}">
+      <td class="tabular">${o.folio}</td><td>${o.producto}</td>
+      <td class="tabular">${metaAprobada(o)} ${o.unidadMedida}</td>
+      <td class="tabular">${o.cantidadRecibida ?? 0} ${o.unidadMedida}</td>
+      <td class="tabular" style="${pend>0?'color:var(--amber);font-weight:700;':''}">${pend>0 ? pend+' '+o.unidadMedida : '—'}</td>
+      <td>${o.solicitante}</td><td>${o.area}</td>
+      <td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
+      <td class="tabular">${fmtDate(o.fechaAprobacion)}</td>
+      <td style="white-space:normal;max-width:180px;">${o.comentarioAprobacion || '—'}</td>
+      <td><input type="text" class="seg-input" data-id="${o.id}" data-field="proveedor" value="${o.proveedor||''}" placeholder="Proveedor"></td>
+      <td><input type="number" class="seg-input num-input" data-id="${o.id}" data-field="precioUnitario" value="${o.precioUnitario||''}" min="0" placeholder="0"></td>
+      <td class="num tabular">${o.precioUnitario ? fmtCOP(total(o)) : '—'}</td>
+      <td><input type="text" class="seg-input" data-id="${o.id}" data-field="observacionesCompras" value="${o.observacionesCompras||''}" placeholder="Notas de compras" style="min-width:140px;"></td>
+      <td><select class="seg-select" data-id="${o.id}">${ESTADO_COMPRA_EDITABLE.map(ec=>`<option value="${ec.key}" ${o.estadoCompra===ec.key?'selected':''}>${ec.label}</option>`).join('')}</select></td>
+      <td><button class="btn" data-enviar="${o.id}" style="padding:5px 8px;font-size:11px;white-space:nowrap;">Enviar a recepción</button></td>
+    </tr>
+  `;
+}
+
+function wireSeguimientoInputs(){
+  document.querySelectorAll('.seg-input').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      const id = el.dataset.id, field = el.dataset.field;
+      let payload;
+      if(field==='precioUnitario'){ payload = { precioUnitario: Number(el.value)||0 }; }
+      else { payload = { [field]: el.value }; }
+      await runAction(null, async ()=>{ await updateDoc(doc(db,'solicitudes', id), payload); });
+    });
+  });
+  document.querySelectorAll('.seg-select').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      const id = el.dataset.id, ec = el.value;
+      const estado = ec==='cancelado' ? 'cancelada' : 'compra';
+      await runAction(null, async ()=>{ await updateDoc(doc(db,'solicitudes', id), { estadoCompra: ec, estado }); });
+    });
+  });
+  document.querySelectorAll('button[data-enviar]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('¿Enviar este pedido a recepción del almacén?')) return;
+      await runAction(btn, async ()=>{ await updateDoc(doc(db,'solicitudes', btn.dataset.enviar), { estado:'por_recibir' }); });
+    });
+  });
+}
+
+/* ============================ GESTION DE USUARIOS ============================ */
+function renderUsuarios(){
+  const mount = document.getElementById('viewMount');
+  mount.innerHTML = `
+    <div class="table-wrap">
+      <div class="section-label">Crear usuario</div>
+      <div class="field-grid" style="max-width:660px;">
+        <div class="field"><label>Nombre completo</label><input id="nu_nombre" placeholder="Ej. Camilo León"></div>
+        <div class="field"><label>Cargo</label><input id="nu_cargo" placeholder="Ej. Auxiliar de bodega"></div>
+        <div class="field"><label>Rol</label>
+          <select id="nu_rol">
+            <option value="solicitante">Solicitante</option>
+            <option value="almacenista">Almacenista</option>
+            <option value="aprobador">Aprobador</option>
+            <option value="compras">Compras</option>
+          </select>
+        </div>
+        <div class="field"><label>Contraseña temporal</label><input id="nu_clave" type="password" placeholder="La persona deberá cambiarla al entrar"></div>
+      </div>
+      <button class="btn btn-primary" id="createUserBtn">Crear usuario</button>
+      <div id="createUserError" class="helper-text" style="color:var(--rust);"></div>
+
+      <hr class="divider">
+      <div class="section-label">Usuarios (${usersList.length})</div>
+      <div class="table-scroll">
+        <table class="oc-table">
+          <thead><tr><th style="cursor:default;">Nombre</th><th style="cursor:default;">Cargo</th><th style="cursor:default;">Rol</th><th style="cursor:default;"></th></tr></thead>
+          <tbody>
+            ${usersList.map(u=>`
+              <tr>
+                <td>${u.nombre}${u.claveTemporal ? ' <span class="helper-text">(clave temporal)</span>' : ''}</td><td>${u.cargo||u.area||''}</td>
+                <td><span class="role-pill" style="background:${ROLE_COLOR[u.rol].bg};color:${ROLE_COLOR[u.rol].fg}">${ROLE_LABEL[u.rol]}</span></td>
+                <td>${u.id===state.currentUser.id ? '<span class="helper-text">Tu usuario</span>' : `<button class="btn btn-reject" data-uid="${u.id}" style="padding:5px 10px;font-size:11px;">Eliminar</button>`}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <hr class="divider">
+      <div class="section-label">Unidades de medida</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${unidadesList.map(un=>`
+          <span class="role-pill" style="background:var(--gray-tint);color:var(--ink);display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;">
+            ${un}
+            <button data-un="${un}" class="btn-ghost" style="padding:0 3px;font-size:14px;line-height:1;">&times;</button>
+          </span>
+        `).join('')}
+        ${unidadesList.length===0 ? '<span class="helper-text">No hay unidades registradas.</span>' : ''}
+      </div>
+      <div style="display:flex;gap:8px;max-width:360px;">
+        <input id="nu_unidad_nueva" placeholder="Nueva unidad, ej. tonelada" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+        <button class="btn" id="addUnidadBtn">Agregar</button>
+      </div>
+
+      <hr class="divider">
+      <div class="section-label">Áreas de la empresa</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${areasList.map(a=>`
+          <span class="role-pill" style="background:var(--gray-tint);color:var(--ink);display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;">
+            ${a}
+            <button data-area="${a}" class="btn-ghost" style="padding:0 3px;font-size:14px;line-height:1;">&times;</button>
+          </span>
+        `).join('')}
+        ${areasList.length===0 ? '<span class="helper-text">No hay áreas registradas.</span>' : ''}
+      </div>
+      <div style="display:flex;gap:8px;max-width:360px;">
+        <input id="nu_area_nueva" placeholder="Nueva área, ej. Telares" style="flex:1;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+        <button class="btn" id="addAreaBtn">Agregar</button>
+      </div>
+
+      <hr class="divider">
+      <div class="section-label">Números de WhatsApp para notificaciones</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-width:440px;">
+        ${whatsappContactos.map(c=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:4px;padding:7px 10px;">
+            <span style="font-size:12.5px;"><b>${c.etiqueta}</b> · ${c.numero}</span>
+            <button data-wa-etiqueta="${c.etiqueta}" data-wa-numero="${c.numero}" class="btn-ghost" style="padding:0 4px;font-size:14px;">&times;</button>
+          </div>
+        `).join('')}
+        ${whatsappContactos.length===0 ? '<span class="helper-text">No hay números guardados todavía.</span>' : ''}
+      </div>
+      <div style="display:flex;gap:8px;max-width:460px;flex-wrap:wrap;">
+        <input id="wa_etiqueta" placeholder="Etiqueta, ej. Ing. John" style="flex:1;min-width:140px;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+        <input id="wa_numero" placeholder="Número, ej. 573001234567" style="flex:1;min-width:140px;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+        <button class="btn" id="addWaBtn">Agregar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('createUserBtn').addEventListener('click', async (e)=>{
+    const nombre = document.getElementById('nu_nombre').value.trim();
+    const cargo = document.getElementById('nu_cargo').value.trim();
+    const rol = document.getElementById('nu_rol').value;
+    const clave = document.getElementById('nu_clave').value;
+    const errEl = document.getElementById('createUserError');
+    errEl.textContent = '';
+    if(!nombre || !clave){ errEl.textContent = 'Nombre y contraseña son obligatorios.'; return; }
+    const ok = await runAction(e.target, async ()=>{
+      await addDoc(collection(db,'usuarios'), { nombre, cargo, rol, clave, claveTemporal: true, creadoEn: serverTimestamp() });
+    });
+    if(ok){ document.getElementById('nu_nombre').value=''; document.getElementById('nu_cargo').value=''; document.getElementById('nu_clave').value=''; }
+  });
+  mount.querySelectorAll('button[data-uid]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('¿Eliminar este usuario? No podrá volver a iniciar sesión.')) return;
+      await runAction(btn, async ()=>{ await deleteDoc(doc(db,'usuarios', btn.dataset.uid)); });
+    });
+  });
+  document.getElementById('addUnidadBtn').addEventListener('click', async (e)=>{
+    const input = document.getElementById('nu_unidad_nueva');
+    const val = input.value.trim().toLowerCase();
+    if(!val || unidadesList.includes(val)){ input.value=''; return; }
+    const ok = await runAction(e.target, async ()=>{ await addUnidad(val); });
+    if(ok) input.value='';
+  });
+  mount.querySelectorAll('button[data-un]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await runAction(btn, async ()=>{ await removeUnidad(btn.dataset.un); });
+    });
+  });
+  document.getElementById('addWaBtn').addEventListener('click', async (e)=>{
+    const etiqueta = document.getElementById('wa_etiqueta').value.trim();
+    const numero = document.getElementById('wa_numero').value.trim();
+    if(!etiqueta || !numero) return;
+    const ok = await runAction(e.target, async ()=>{ await addWhatsappContacto(etiqueta, numero); });
+    if(ok){ document.getElementById('wa_etiqueta').value=''; document.getElementById('wa_numero').value=''; }
+  });
+  mount.querySelectorAll('button[data-wa-numero]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await runAction(btn, async ()=>{ await removeWhatsappContacto({etiqueta: btn.dataset.waEtiqueta, numero: btn.dataset.waNumero}); });
+    });
+  });
+  document.getElementById('addAreaBtn').addEventListener('click', async (e)=>{
+    const input = document.getElementById('nu_area_nueva');
+    const val = input.value.trim();
+    if(!val || areasList.includes(val)){ input.value=''; return; }
+    const ok = await runAction(e.target, async ()=>{ await addArea(val); });
+    if(ok) input.value='';
+  });
+  mount.querySelectorAll('button[data-area]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await runAction(btn, async ()=>{ await removeArea(btn.dataset.area); });
+    });
+  });
+}
+
+/* ============================ PAPELERA ============================ */
+function renderPapelera(){
+  const mount = document.getElementById('viewMount');
+  const borrados = orders.filter(o=>o.eliminado).sort((a,b)=> (b.eliminadoEn||'').localeCompare(a.eliminadoEn||''));
+  mount.innerHTML = `
+    <div class="table-wrap">
+      <div class="section-label">Papelera (${borrados.length})</div>
+      <div class="table-scroll">
+        <table class="oc-table">
+          <thead><tr>
+            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Solicitante</th>
+            <th style="cursor:default;">Estado al borrar</th><th style="cursor:default;">Eliminado por</th><th style="cursor:default;">Fecha de borrado</th><th style="cursor:default;"></th>
+          </tr></thead>
+          <tbody>
+            ${borrados.length ? borrados.map(o=>{
+              const est = estadoInfo(o.estado);
+              return `<tr>
+                <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.solicitante}</td>
+                <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
+                <td>${o.eliminadoPor||'—'}</td><td class="tabular">${fmtDateTime(o.eliminadoEn)}</td>
+                <td style="display:flex;gap:6px;">
+                  <button class="btn" data-restore="${o.id}" style="padding:5px 10px;font-size:11px;">Restaurar</button>
+                  <button class="btn btn-reject" data-purge="${o.id}" style="padding:5px 10px;font-size:11px;">Eliminar definitivo</button>
+                </td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-faint);padding:26px;">La papelera está vacía.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  mount.querySelectorAll('button[data-restore]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await runAction(btn, async ()=>{ await updateDoc(doc(db,'solicitudes', btn.dataset.restore), { eliminado: false, eliminadoPor: null, eliminadoEn: null }); });
+    });
+  });
+  mount.querySelectorAll('button[data-purge]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Esto borra la solicitud PARA SIEMPRE, no se puede deshacer. ¿Continuar?')) return;
+      await runAction(btn, async ()=>{ await deleteDoc(doc(db,'solicitudes', btn.dataset.purge)); });
+    });
+  });
+}
+
+/* ============================ DETALLE DE SOLICITUD ============================ */
+function closeDetail(){ state.detailOrderId = null; render(); }
+
+function renderDetailModal(o){
+  const u = state.currentUser;
+  const est = estadoInfo(o.estado);
+  const isOwner = ownOrders(o, u);
+  const canEditDraft = (u.rol==='solicitante'||u.rol==='almacenista') && isOwner && (o.estado==='borrador' || o.estado==='rechazado');
+  const canApprove = u.rol==='aprobador' && o.estado==='pendiente';
+  const canEnviarACotizacion = canEditDraft && o.estado==='borrador';
+  const canEnviarACotizadoAAprobador = u.rol==='compras' && o.estado==='buscando_cotizacion';
+  const canEditCompra = u.rol==='compras' && o.estado==='compra';
+  const canEditValores = u.rol==='compras' && !['borrador','pendiente','rechazado'].includes(o.estado);
+  const canEditFactura = u.rol==='compras' && o.estado==='completada';
+  const canManageCotizacion = canEditDraft || (u.rol==='compras' && (o.estado==='pendiente' || o.estado==='buscando_cotizacion'));
+  const canConfirmRecepcion = u.rol==='almacenista' && o.estado==='por_recibir';
+  const canDelete = u.rol==='compras' || ((u.rol==='solicitante'||u.rol==='almacenista') && isOwner && (o.estado==='borrador' || o.estado==='pendiente' || o.estado==='buscando_cotizacion'));
+  const showCompraBlock = canEditValores || hasCompraInfo(o) || !!o.estadoCompra;
+  const showRecepcionBlock = canConfirmRecepcion || o.fechaRecepcion;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay'; overlay.id = 'detailOverlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <div><h2>${o.producto}</h2><div class="folio">${o.folio} <span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></div></div>
+        <button class="modal-close" id="closeDetail">&times;</button>
+      </div>
+      <div class="modal-body">
+        ${o.ticketOrigenFolio ? `<div class="history-note" style="background:var(--violet-tint);color:var(--violet);">Este ticket nació del faltante del ticket <button data-open-ticket="${o.ticketOrigenId}" class="btn-ghost" style="padding:0;font-weight:700;text-decoration:underline;color:var(--violet);font-size:inherit;">${o.ticketOrigenFolio}</button>.</div>` : ''}
+        ${o.ticketDerivadoFolio ? `<div class="history-note" style="background:var(--violet-tint);color:var(--violet);">El faltante de este ticket continúa en el ticket <button data-open-ticket="${o.ticketDerivadoId}" class="btn-ghost" style="padding:0;font-weight:700;text-decoration:underline;color:var(--violet);font-size:inherit;">${o.ticketDerivadoFolio}</button>.</div>` : ''}
+        ${o.estado==='rechazado' ? `<div class="history-note" style="background:var(--rust-tint);color:var(--rust);"><b>Rechazado por ${o.aprobador}</b> el ${fmtDate(o.fechaAprobacion)}.<br>${o.comentarioAprobacion || 'Sin comentario.'}</div>` : ''}
+        ${o.aprobador && o.estado!=='rechazado' ? `<div class="history-note"><b>Aprobado por ${o.aprobador}</b> el ${fmtDate(o.fechaAprobacion)} · Cantidad aprobada: ${o.cantidadAprobada ?? o.cantidad} ${o.unidadMedida}.${o.comentarioAprobacion?`<br>${o.comentarioAprobacion}`:''}</div>` : ''}
+
+        <div class="section-label">Solicitud</div>
+        <div class="field-grid">
+          <div class="field"><label>Área</label>${canEditDraft ? `<select id="f_area">${areasList.map(a=>`<option value="${a}" ${o.area===a?'selected':''}>${a}</option>`).join('')}</select>` : `<div class="readonly-val">${o.area}</div>`}</div>
+          <div class="field"><label>Solicitante</label><div class="readonly-val">${o.solicitante}</div></div>
+          <div class="field"><label>Fecha de solicitud</label><div class="readonly-val">${fmtDateTime(o.fechaSolicitud)}</div></div>
+          <div class="field full"><label>Producto</label>${canEditDraft ? `<input id="f_producto" value="${o.producto}">` : `<div class="readonly-val">${o.producto}</div>`}</div>
+          <div class="field"><label>Cantidad solicitada</label>${canEditDraft ? `<input id="f_cantidad" type="number" min="1" value="${o.cantidad}">` : `<div class="readonly-val">${o.cantidad}</div>`}</div>
+          <div class="field"><label>Unidad de medida</label>${canEditDraft ? `<input id="f_unidadMedida" list="umList" value="${o.unidadMedida}"><datalist id="umList">${unidadesList.map(un=>`<option value="${un}">`).join('')}</datalist>` : `<div class="readonly-val">${o.unidadMedida}</div>`}</div>
+          <div class="field full"><label>Observaciones</label>${canEditDraft ? `<textarea id="f_observaciones">${o.observaciones}</textarea>` : `<div class="readonly-val">${o.observaciones || '—'}</div>`}</div>
+        </div>
+
+        <hr class="divider">
+        <div class="section-label">Cotización</div>
+        ${o.cotizacionUrl ? `
+          <div class="readonly-val">
+            <a href="${o.cotizacionUrl}" target="_blank" rel="noopener" style="color:var(--brand);text-decoration:underline;font-weight:600;">📎 ${o.cotizacionNombre || 'Ver cotización'}</a>
+            <div class="helper-text">Subida por ${o.cotizacionSubidaPor||'—'} el ${fmtDateTime(o.cotizacionSubidaEn)}</div>
+          </div>
+          ${canManageCotizacion ? `<button class="btn" id="quitarCotizacionBtn" style="margin-top:8px;">Quitar cotización</button>` : ''}
+        ` : (o.sinCotizacion ? `
+          <div class="readonly-val"><span class="status-badge" style="background:var(--gray-tint);color:var(--ink-soft);">Sin cotización — solo solicitud</span></div>
+          ${canManageCotizacion ? `<button class="btn" id="deshacerSinCotizacionBtn" style="margin-top:8px;">Deshacer</button>` : ''}
+        ` : (canManageCotizacion ? `
+          <input type="file" id="f_cotizacionFile" accept="application/pdf,image/*" style="border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:12.5px;width:100%;">
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary" id="subirCotizacionBtn">Adjuntar cotización</button>
+            <button class="btn" id="sinCotizacionBtn">Marcar sin cotización</button>
+          </div>
+        ` : `<div class="readonly-val">—</div>`))}
+
+        ${canApprove ? `
+          <hr class="divider">
+          <div class="section-label">Decisión de aprobación</div>
+          <div class="field"><label>Cantidad aprobada</label><input id="f_cantidadAprobada" type="number" min="0" value="${o.cantidad}"></div>
+          <div class="field full"><label>Comentario</label><textarea id="f_comentario" placeholder="Observaciones para el solicitante o compras..."></textarea></div>
+          <div class="field full"><label>Número de WhatsApp para notificación</label>${waFieldMarkup('f_wa','f_wa_select')}
+            <div class="helper-text">Al aprobar se abrirá WhatsApp con el ítem, cantidad y observación listos para enviar, y la solicitud pasará al módulo de seguimiento de compras.</div>
+          </div>
+        ` : ''}
+
+        ${showCompraBlock ? `
+          <hr class="divider">
+          <div class="section-label">Compra y factura</div>
+          <div class="field-grid">
+            <div class="field"><label>Cantidad aprobada</label><div class="readonly-val">${metaAprobada(o)} ${o.unidadMedida}</div></div>
+            <div class="field"><label>Cantidad recibida hasta ahora</label><div class="readonly-val">${o.cantidadRecibida!=null ? `${o.cantidadRecibida} ${o.unidadMedida}` : 'Aún no recepcionado'}${pendienteCompra(o)>0 ? ` <span class="helper-text">(pendiente: ${pendienteCompra(o)} ${o.unidadMedida})</span>` : ''}</div></div>
+            <div class="field"><label>Proveedor</label>${canEditValores ? `<input id="f_proveedor" value="${o.proveedor}" placeholder="Nombre del proveedor">` : `<div class="readonly-val">${o.proveedor || '—'}</div>`}</div>
+            <div class="field"><label>Precio unitario</label>${canEditValores ? `<input id="f_precio" type="number" min="0" value="${o.precioUnitario||0}">` : `<div class="readonly-val">${o.precioUnitario ? fmtCOP(o.precioUnitario) : '—'}</div>`}</div>
+            <div class="field full"><label>Estado de compra</label>
+              ${canEditCompra ? `<select id="f_estadoCompra">${ESTADO_COMPRA_EDITABLE.map(ec=>`<option value="${ec.key}" ${o.estadoCompra===ec.key?'selected':''}>${ec.label}</option>`).join('')}</select>`
+                : (o.estadoCompra ? `<div class="readonly-val"><span class="status-badge" style="background:${estadoCompraInfo(o.estadoCompra).tint};color:${estadoCompraInfo(o.estadoCompra).color}">${estadoCompraInfo(o.estadoCompra).label}</span></div>` : `<div class="readonly-val">—</div>`)}
+            </div>
+            <div class="field full"><label>Observaciones de compras</label>${canEditValores ? `<textarea id="f_observacionesCompras" placeholder="Notas para las demás áreas...">${o.observacionesCompras||''}</textarea>` : `<div class="readonly-val">${o.observacionesCompras || '—'}</div>`}</div>
+          </div>
+
+          ${o.estado!=='buscando_cotizacion' ? `
+          <div class="section-label" style="margin-top:14px;">Facturas</div>
+          ${listaFacturas(o).length ? listaFacturas(o).map((f,i)=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:4px;padding:8px 12px;margin-bottom:6px;">
+              <span style="font-size:12.5px;"><b>${f.numero}</b>${f.fecha ? ` · ${fmtDate(f.fecha)}` : ''}</span>
+              ${canEditFactura ? `<button data-quitar-factura="${i}" class="btn-ghost" style="padding:0 4px;font-size:15px;">&times;</button>` : ''}
+            </div>
+          `).join('') : `<div class="helper-text" style="margin-bottom:6px;">${canEditFactura ? 'Aún no hay facturas registradas.' : (canEditValores || canEditCompra ? 'Aún no hay facturas registradas.' : '—')}</div>`}
+          ${canEditFactura ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+              <input type="text" id="f_nuevaFacturaNum" placeholder="N° de factura" style="flex:1;min-width:120px;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+              <input type="date" id="f_nuevaFacturaFecha" style="flex:1;min-width:130px;border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;">
+              <button class="btn" id="agregarFacturaBtn">Agregar factura</button>
+            </div>
+          ` : (!canEditFactura && listaFacturas(o).length===0 ? `<div class="helper-text">La factura se habilita cuando el almacenista confirme la recepción completa del pedido.</div>` : '')}
+          ` : `<div class="helper-text">Consiguiendo cotización — cuando esté lista, envía la solicitud al aprobador.</div>`}
+
+          ${pendienteCompra(o)>0 ? `<div class="history-note" style="background:var(--amber-tint);color:var(--amber);margin-top:12px;">Quedan ${pendienteCompra(o)} ${o.unidadMedida} pendientes por comprar para completar lo aprobado.</div>` : ''}
+          <div class="total-line"><span class="label">Total orden</span><span class="value" id="totalPreview">${fmtCOP(total(o))}</span></div>
+        ` : ''}
+
+        ${showRecepcionBlock ? `
+          <hr class="divider">
+          <div class="section-label">Recepción</div>
+          ${canConfirmRecepcion ? `
+            <div class="field-grid">
+              <div class="field"><label>Cantidad aprobada</label><div class="readonly-val">${metaAprobada(o)} ${o.unidadMedida}</div></div>
+              <div class="field"><label>Ya recibido anteriormente</label><div class="readonly-val">${o.cantidadRecibida ?? 0} ${o.unidadMedida}</div></div>
+              <div class="field full"><label>Cantidad recibida en esta entrega</label><input id="f_cantidadEntrega" type="number" min="0" value="${o.cantidadRecibida!=null ? pendienteCompra(o) : metaAprobada(o)}">
+                <div class="helper-text">Si llega menos de lo que falta, el pedido regresa a Compras con el pendiente registrado; si se completa, el ticket pasa a Completada.</div>
+              </div>
+              <div class="field"><label>Fecha y hora de recepción</label><div class="readonly-val">Se registrará con la fecha y hora actuales al confirmar.</div></div>
+              <div class="field"><label>&nbsp;</label><div class="checkbox-row"><input type="checkbox" id="f_entregaOk" checked><label for="f_entregaOk">Entrega OK (conforme)</label></div></div>
+              <div class="field full"><label>Observaciones de recepción</label><textarea id="f_observacionesRecepcion" placeholder="Novedades, faltantes, estado del producto..."></textarea></div>
+            </div>
+          ` : (o.fechaRecepcion ? `
+            <div class="field-grid">
+              <div class="field"><label>Cantidad aprobada</label><div class="readonly-val">${metaAprobada(o)} ${o.unidadMedida}</div></div>
+              <div class="field"><label>Cantidad recibida</label><div class="readonly-val">${o.cantidadRecibida ?? '—'} ${o.unidadMedida}</div></div>
+              <div class="field"><label>Fecha de recepción</label><div class="readonly-val">${fmtDateTime(o.fechaRecepcion)}</div></div>
+              <div class="field"><label>Entrega conforme</label><div class="readonly-val">${o.entregaOk ? 'Sí, entrega OK' : 'Con novedad'}</div></div>
+              <div class="field full"><label>Observaciones de recepción</label><div class="readonly-val">${o.observacionesRecepcion || '—'}</div></div>
+            </div>
+          ` : `<div class="history-note">Aún pendiente de recepción por parte del almacenista.</div>`)}
+        ` : ''}
+      </div>
+      <div class="modal-footer">${footerButtons(o, u, {canEditDraft, canApprove, canEditCompra, canEditValores, canEnviarACotizacion, canEnviarACotizadoAAprobador, canConfirmRecepcion, canDelete})}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target.id==='detailOverlay') closeDetail(); });
+  document.getElementById('closeDetail').addEventListener('click', closeDetail);
+  overlay.querySelectorAll('button[data-open-ticket]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.openTicket; render(); });
+  });
+
+  ['f_cantidad','f_precio'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('input', ()=>{
+      const priceEl = document.getElementById('f_precio'); const totalEl = document.getElementById('totalPreview');
+      const qtyEl = document.getElementById('f_cantidad');
+      if(priceEl && totalEl){ const c = qtyEl ? (Number(qtyEl.value)||0) : effectiveCantidad(o); const p = Number(priceEl.value)||0; totalEl.textContent = fmtCOP(c*p); }
+    });
+  });
+
+  wireWaField('f_wa','f_wa_select');
+
+  const subirCotizacionBtn = document.getElementById('subirCotizacionBtn');
+  if(subirCotizacionBtn) subirCotizacionBtn.addEventListener('click', async (e)=>{
+    const fileInput = document.getElementById('f_cotizacionFile');
+    const file = fileInput.files[0];
+    if(!file){ alert('Selecciona primero un archivo (PDF o imagen).'); return; }
+    if(file.size > 8*1024*1024){ alert('El archivo es muy grande. El máximo es 8 MB.'); return; }
+    await runAction(e.target, async ()=>{ await subirCotizacion(o.id, file); });
+  });
+  const sinCotizacionBtn = document.getElementById('sinCotizacionBtn');
+  if(sinCotizacionBtn) sinCotizacionBtn.addEventListener('click', async (e)=>{
+    await runAction(e.target, async ()=>{ await marcarSinCotizacion(o.id); });
+  });
+  const quitarCotizacionBtn = document.getElementById('quitarCotizacionBtn');
+  if(quitarCotizacionBtn) quitarCotizacionBtn.addEventListener('click', async (e)=>{
+    if(!confirm('¿Quitar el archivo de cotización adjunto?')) return;
+    await runAction(e.target, async ()=>{ await quitarCotizacion(o.id, o.cotizacionRuta); });
+  });
+  const deshacerSinCotizacionBtn = document.getElementById('deshacerSinCotizacionBtn');
+  if(deshacerSinCotizacionBtn) deshacerSinCotizacionBtn.addEventListener('click', async (e)=>{
+    await runAction(e.target, async ()=>{ await quitarCotizacion(o.id, null); });
+  });
+
+  wireFooterActions(o, {canEditDraft, canApprove, canEditCompra, canEditValores, canEnviarACotizacion, canEnviarACotizadoAAprobador, canConfirmRecepcion, canDelete});
+}
+
+function footerButtons(o, u, f){
+  let btns = `<button class="btn btn-ghost" id="cancelDetail">Cerrar</button>`;
+  if(f.canEditDraft){
+    btns += `<button class="btn" id="saveDraft">Guardar cambios</button>`;
+    if(f.canEnviarACotizacion) btns += `<button class="btn" id="enviarACotizacion">Enviar a Compras (buscar cotización)</button>`;
+    btns += o.estado==='rechazado' ? `<button class="btn btn-primary" id="resendOrder">Editar y reenviar a aprobación</button>` : `<button class="btn btn-primary" id="submitOrder">Enviar a aprobación</button>`;
+  }
+  if(f.canApprove){ btns += `<button class="btn btn-reject" id="rejectOrder">Rechazar</button><button class="btn btn-primary" id="approveOrder">Aprobar y notificar por WhatsApp</button>`; }
+  if(f.canEditValores){ btns += `<button class="btn btn-primary" id="saveCompra">Guardar cambios</button>`; }
+  if(f.canEnviarACotizadoAAprobador){ btns += `<button class="btn btn-primary" id="enviarACotizadoAprobador">Enviar a aprobador</button>`; }
+  if(f.canEditCompra){ btns += `<button class="btn" id="enviarRecepcion">Enviar a recepción de almacén</button>`; }
+  if(f.canConfirmRecepcion){ btns += `<button class="btn btn-primary" id="confirmRecepcion">Confirmar recepción</button>`; }
+  if(f.canDelete){ btns += `<button class="btn btn-reject" id="deleteOrder">Eliminar</button>`; }
+  return btns;
+}
+
+function wireFooterActions(o, f){
+  const cancel = document.getElementById('cancelDetail');
+  if(cancel) cancel.addEventListener('click', closeDetail);
+
+  function draftFields(){
+    return {
+      area: document.getElementById('f_area').value,
+      producto: document.getElementById('f_producto').value,
+      cantidad: Number(document.getElementById('f_cantidad').value)||0,
+      unidadMedida: document.getElementById('f_unidadMedida').value,
+      observaciones: document.getElementById('f_observaciones').value,
+    };
+  }
+
+  const saveDraft = document.getElementById('saveDraft');
+  if(saveDraft) saveDraft.addEventListener('click', async (e)=>{
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), draftFields()); });
+    if(ok) closeDetail();
+  });
+
+  const submitOrder = document.getElementById('submitOrder');
+  if(submitOrder) submitOrder.addEventListener('click', async (e)=>{
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), {...draftFields(), estado:'pendiente'}); });
+    if(ok) closeDetail();
+  });
+
+  const resendOrder = document.getElementById('resendOrder');
+  if(resendOrder) resendOrder.addEventListener('click', async (e)=>{
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), {...draftFields(), estado:'pendiente', comentarioAprobacion:''}); });
+    if(ok) closeDetail();
+  });
+
+  const enviarACotizacion = document.getElementById('enviarACotizacion');
+  if(enviarACotizacion) enviarACotizacion.addEventListener('click', async (e)=>{
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), {...draftFields(), estado:'buscando_cotizacion'}); });
+    if(ok) closeDetail();
+  });
+
+  const approveOrder = document.getElementById('approveOrder');
+  if(approveOrder) approveOrder.addEventListener('click', async (e)=>{
+    const comentario = document.getElementById('f_comentario').value;
+    const cantidadAprobada = Number(document.getElementById('f_cantidadAprobada').value)||0;
+    const number = document.getElementById('f_wa').value.trim() || state.whatsappNumber;
+    const ok = await runAction(e.target, async ()=>{
+      await updateDoc(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'cotizando', aprobador: state.currentUser.nombre, fechaAprobacion: today(), comentarioAprobacion: comentario, cantidadAprobada });
+    });
+    if(ok){ state.whatsappNumber = number; sendWhatsAppNotification([{...o, cantidad: cantidadAprobada}], number); closeDetail(); }
+  });
+
+  const rejectOrder = document.getElementById('rejectOrder');
+  if(rejectOrder) rejectOrder.addEventListener('click', async (e)=>{
+    const comentario = document.getElementById('f_comentario').value || 'Sin comentario.';
+    const ok = await runAction(e.target, async ()=>{
+      await updateDoc(doc(db,'solicitudes', o.id), { estado:'rechazado', aprobador: state.currentUser.nombre, fechaAprobacion: today(), comentarioAprobacion: comentario });
+    });
+    if(ok) closeDetail();
+  });
+
+  const saveCompra = document.getElementById('saveCompra');
+  if(saveCompra) saveCompra.addEventListener('click', async (e)=>{
+    const proveedor = document.getElementById('f_proveedor').value;
+    const precioUnitario = Number(document.getElementById('f_precio').value)||0;
+    const observacionesCompras = document.getElementById('f_observacionesCompras').value;
+    const payload = { proveedor, precioUnitario, observacionesCompras };
+    const ecEl = document.getElementById('f_estadoCompra');
+    if(ecEl){
+      const ec = ecEl.value;
+      payload.estadoCompra = ec;
+      payload.estado = ec==='cancelado' ? 'cancelada' : 'compra';
+    }
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), payload); });
+    if(ok) closeDetail();
+  });
+
+  const enviarACotizadoAprobador = document.getElementById('enviarACotizadoAprobador');
+  if(enviarACotizadoAprobador) enviarACotizadoAprobador.addEventListener('click', async (e)=>{
+    const proveedor = document.getElementById('f_proveedor') ? document.getElementById('f_proveedor').value : o.proveedor;
+    const precioUnitario = document.getElementById('f_precio') ? (Number(document.getElementById('f_precio').value)||0) : o.precioUnitario;
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), { proveedor, precioUnitario, estado:'pendiente' }); });
+    if(ok) closeDetail();
+  });
+
+  const agregarFacturaBtn = document.getElementById('agregarFacturaBtn');
+  if(agregarFacturaBtn) agregarFacturaBtn.addEventListener('click', async (e)=>{
+    const numero = document.getElementById('f_nuevaFacturaNum').value.trim();
+    const fecha = document.getElementById('f_nuevaFacturaFecha').value;
+    if(!numero){ alert('Escribe el número de factura.'); return; }
+    await runAction(e.target, async ()=>{
+      const actualizadas = [...listaFacturas(o), { numero, fecha }];
+      await updateDoc(doc(db,'solicitudes', o.id), { facturas: actualizadas, numeroFactura: null, fechaFactura: null });
+    });
+  });
+  document.querySelectorAll('button[data-quitar-factura]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const idx = Number(btn.dataset.quitarFactura);
+      await runAction(btn, async ()=>{
+        const actualizadas = listaFacturas(o).filter((_,i)=>i!==idx);
+        await updateDoc(doc(db,'solicitudes', o.id), { facturas: actualizadas, numeroFactura: null, fechaFactura: null });
+      });
+    });
+  });
+
+  const enviarRecepcion = document.getElementById('enviarRecepcion');
+  if(enviarRecepcion) enviarRecepcion.addEventListener('click', async (e)=>{
+    if(!confirm(`¿Enviar ${o.folio} a recepción del almacén?`)) return;
+    const ok = await runAction(e.target, async ()=>{ await updateDoc(doc(db,'solicitudes', o.id), { estado:'por_recibir' }); });
+    if(ok) closeDetail();
+  });
+
+  const confirmRecepcion = document.getElementById('confirmRecepcion');
+  if(confirmRecepcion) confirmRecepcion.addEventListener('click', async (e)=>{
+    const fechaRecepcion = nowISO();
+    const cantidadEntrega = Number(document.getElementById('f_cantidadEntrega').value)||0;
+    const entregaOk = document.getElementById('f_entregaOk').checked;
+    const observacionesRecepcion = document.getElementById('f_observacionesRecepcion').value;
+    const nuevoAcumulado = (o.cantidadRecibida||0) + cantidadEntrega;
+    const meta = metaAprobada(o);
+    const completo = nuevoAcumulado >= meta;
+    const pendiente = meta - nuevoAcumulado;
+    const ok = await runAction(e.target, async ()=>{
+      await updateDoc(doc(db,'solicitudes', o.id), {
+        fechaRecepcion, cantidadRecibida: nuevoAcumulado, entregaOk, observacionesRecepcion,
+        estado: 'completada', estadoCompra: 'completado',
+        recepcionadoPor: state.currentUser.nombre,
+      });
+      if(!completo){
+        const folio = await nextFolio();
+        const nuevaRef = await addDoc(collection(db,'solicitudes'), {
+          folio,
+          area: o.area, producto: o.producto,
+          cantidad: pendiente, unidadMedida: o.unidadMedida,
+          observaciones: o.observaciones || '',
+          solicitante: o.solicitante,
+          fechaSolicitud: nowISO(),
+          estado: 'compra',
+          aprobador: o.aprobador, fechaAprobacion: today(),
+          comentarioAprobacion: `Faltante del ticket ${o.folio}, continúa directo en compras.`,
+          cantidadAprobada: pendiente,
+          proveedor: o.proveedor||'', precioUnitario: o.precioUnitario||0, facturas:[], estadoCompra:'cotizando',
+          cotizacionUrl:null, cotizacionRuta:null, cotizacionNombre:null, cotizacionSubidaPor:null, cotizacionSubidaEn:null, sinCotizacion:false,
+          fechaRecepcion:'', entregaOk:null, observacionesRecepcion:'', recepcionadoPor:'', cantidadRecibida:null,
+          observacionesCompras:'',
+          eliminado:false,
+          ticketOrigenId: o.id, ticketOrigenFolio: o.folio,
+          creadoEn: serverTimestamp(),
+        });
+        await updateDoc(doc(db,'solicitudes', o.id), { ticketDerivadoId: nuevaRef.id, ticketDerivadoFolio: folio });
+      }
+    });
+    if(ok) closeDetail();
+  });
+
+  const deleteOrder = document.getElementById('deleteOrder');
+  if(deleteOrder) deleteOrder.addEventListener('click', async (e)=>{
+    if(!confirm(`¿Eliminar la solicitud ${o.folio}? Se moverá a la papelera.`)) return;
+    const ok = await runAction(e.target, async ()=>{
+      await updateDoc(doc(db,'solicitudes', o.id), { eliminado: true, eliminadoPor: state.currentUser.nombre, eliminadoEn: nowISO() });
+    });
+    if(ok) closeDetail();
+  });
+}
+
+/* ============================ APROBACION MASIVA ============================ */
+function closeBulkApprove(){ state.bulkApproveOpen=false; render(); }
+
+function renderBulkApproveModal(){
+  const items = orders.filter(o=>state.selectedPendingIds.has(o.id));
+  if(items.length===0){ state.bulkApproveOpen=false; return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay'; overlay.id = 'bulkOverlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <div><h2>Aprobar ${items.length} solicitud(es)</h2><div class="folio">Quedará registro de aprobación y pasarán al módulo de seguimiento de compras</div></div>
+        <button class="modal-close" id="closeBulk">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="section-label">Ítems a aprobar</div>
+        ${items.map(o=>`<div class="history-note"><b>${o.folio} · ${o.producto}</b><br>Cantidad solicitada: ${o.cantidad} ${o.unidadMedida} · Área: ${o.area}<br>
+          <label style="font-size:11px;font-weight:600;color:var(--ink-soft);display:block;margin-top:6px;">Cantidad a aprobar</label>
+          <input type="number" class="bulk-cantidad" data-id="${o.id}" min="0" value="${o.cantidad}" style="width:100px;border:1px solid var(--line);border-radius:4px;padding:6px 8px;font-size:12px;margin-top:3px;">
+          ${o.observaciones ? `<div style="margin-top:6px;">Obs: ${o.observaciones}</div>` : ''}</div>`).join('')}
+        <div class="field full"><label>Comentario (se aplica a todas)</label><textarea id="bulk_comentario" placeholder="Opcional"></textarea></div>
+        <div class="field full"><label>Número de WhatsApp para notificación</label>${waFieldMarkup('bulk_wa','bulk_wa_select')}
+          <div class="helper-text">Se abrirá WhatsApp con el listado completo de ítems aprobados, listo para enviar.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="cancelBulk">Cancelar</button>
+        <button class="btn btn-primary" id="confirmBulk">Aprobar y abrir WhatsApp</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target.id==='bulkOverlay') closeBulkApprove(); });
+  document.getElementById('closeBulk').addEventListener('click', closeBulkApprove);
+  document.getElementById('cancelBulk').addEventListener('click', closeBulkApprove);
+  wireWaField('bulk_wa','bulk_wa_select');
+  document.getElementById('confirmBulk').addEventListener('click', async (e)=>{
+    const comentario = document.getElementById('bulk_comentario').value;
+    const number = document.getElementById('bulk_wa').value.trim() || state.whatsappNumber;
+    const fecha = today();
+    const itemsConCantidadAprobada = items.map(o=>{
+      const cantidadInput = document.querySelector(`.bulk-cantidad[data-id="${o.id}"]`);
+      const cantidadAprobada = cantidadInput ? (Number(cantidadInput.value)||0) : o.cantidad;
+      return { o, cantidadAprobada };
+    });
+    const ok = await runAction(e.target, async ()=>{
+      const batch = writeBatch(db);
+      itemsConCantidadAprobada.forEach(({o, cantidadAprobada})=>{
+        batch.update(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'cotizando', aprobador: state.currentUser.nombre, fechaAprobacion: fecha, comentarioAprobacion: comentario, cantidadAprobada });
+      });
+      await batch.commit();
+    });
+    if(ok){
+      state.whatsappNumber = number;
+      sendWhatsAppNotification(itemsConCantidadAprobada.map(({o, cantidadAprobada})=>({...o, cantidad: cantidadAprobada})), number);
+      state.selectedPendingIds.clear();
+      state.bulkApproveOpen = false;
+      render();
+    }
+  });
+}
+
+/* ============================ NUEVA SOLICITUD ============================ */
+function closeNewOrder(){ state.newOrderOpen = false; render(); }
+
+function renderNewOrderModal(){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay'; overlay.id = 'newOverlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-head"><div><h2>Nueva solicitud de compra</h2><div class="folio">Se guardará como borrador</div></div><button class="modal-close" id="closeNew">&times;</button></div>
+      <div class="modal-body">
+        <div class="field-grid">
+          <div class="field"><label>Área</label><select id="n_area">${areasList.map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
+          <div class="field"><label>Unidad de medida</label><input id="n_unidadMedida" list="umListNew" placeholder="Ej. bulto, caja, kg"><datalist id="umListNew">${unidadesList.map(un=>`<option value="${un}">`).join('')}</datalist></div>
+          <div class="field full"><label>Producto</label><input id="n_producto" placeholder="Ej. Fertilizante NPK 17-6-18"></div>
+          <div class="field"><label>Cantidad</label><input id="n_cantidad" type="number" min="1" value="1"></div>
+          <div class="field full"><label>Observaciones</label><textarea id="n_observaciones" placeholder="Detalle, uso, lote destino..."></textarea></div>
+          <div class="field full">
+            <label>Cotización (opcional)</label>
+            <input type="file" id="n_cotizacionFile" accept="application/pdf,image/*" style="border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:12.5px;width:100%;">
+            <div class="helper-text">Si ya tienes una cotización previa del proveedor, adjúntala aquí (PDF o imagen, máx. 8 MB).</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="cancelNew">Cancelar</button>
+        <button class="btn" id="saveDraftNew">Guardar como borrador</button>
+        <button class="btn" id="saveCotizarNew">Enviar a Compras (buscar cotización)</button>
+        <button class="btn btn-primary" id="saveSubmitNew">Guardar y enviar a aprobación</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e=>{ if(e.target.id==='newOverlay') closeNewOrder(); });
+  document.getElementById('closeNew').addEventListener('click', closeNewOrder);
+  document.getElementById('cancelNew').addEventListener('click', closeNewOrder);
+
+  async function buildOrder(estado){
+    const producto = document.getElementById('n_producto').value.trim();
+    if(!producto){ document.getElementById('n_producto').style.borderColor = 'var(--rust)'; return false; }
+    const fileInput = document.getElementById('n_cotizacionFile');
+    const file = fileInput.files[0];
+    if(file && file.size > 8*1024*1024){ alert('El archivo de cotización es muy grande. El máximo es 8 MB.'); return false; }
+    const folio = await nextFolio();
+    const docRef = await addDoc(collection(db,'solicitudes'), {
+      folio,
+      area: document.getElementById('n_area').value,
+      producto,
+      cantidad: Number(document.getElementById('n_cantidad').value)||1,
+      unidadMedida: document.getElementById('n_unidadMedida').value || 'unidad',
+      observaciones: document.getElementById('n_observaciones').value,
+      solicitante: state.currentUser.nombre,
+      fechaSolicitud: nowISO(),
+      estado,
+      aprobador:'', fechaAprobacion:'', comentarioAprobacion:'', cantidadAprobada:null,
+      proveedor:'', precioUnitario:0, facturas:[], estadoCompra:null,
+      cotizacionUrl:null, cotizacionRuta:null, cotizacionNombre:null, cotizacionSubidaPor:null, cotizacionSubidaEn:null, sinCotizacion:false,
+      fechaRecepcion:'', entregaOk:null, observacionesRecepcion:'', recepcionadoPor:'', cantidadRecibida:null,
+      observacionesCompras:'',
+      eliminado:false,
+      ticketOrigenId:null, ticketOrigenFolio:null, ticketDerivadoId:null, ticketDerivadoFolio:null,
+      creadoEn: serverTimestamp(),
+    });
+    if(file) await subirCotizacion(docRef.id, file);
+    return true;
+  }
+  document.getElementById('saveDraftNew').addEventListener('click', async (e)=>{ const ok = await runAction(e.target, ()=>buildOrder('borrador')); if(ok) closeNewOrder(); });
+  document.getElementById('saveCotizarNew').addEventListener('click', async (e)=>{ const ok = await runAction(e.target, ()=>buildOrder('buscando_cotizacion')); if(ok) closeNewOrder(); });
+  document.getElementById('saveSubmitNew').addEventListener('click', async (e)=>{ const ok = await runAction(e.target, ()=>buildOrder('pendiente')); if(ok) closeNewOrder(); });
+}
+
+/* ============================ INICIO ============================ */
+bootstrap();
+</script>
+</body>
+</html>
