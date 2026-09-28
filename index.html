@@ -156,6 +156,8 @@
   .seg-input.num-input{font-family:var(--mono);}
   .seg-editable{display:inline-block;min-width:60px;padding:4px 3px;border-radius:4px;cursor:text;user-select:text;}
   .seg-editable:hover{background:var(--brand-tint);}
+  .cell-range-selected{background:rgba(47,107,79,.16) !important;}
+  .seguimiento-table tbody td, .oc-table.seguimiento-table tbody td, #historialTabla td, #segTablaBuscando td, #segTablaPendientes td{cursor:cell;}
   .seguimiento-table tbody tr:hover{background:transparent;cursor:default;}
   .history-row{cursor:pointer;}
 
@@ -810,6 +812,7 @@ const SEG_BUSCANDO_COLS = [
 ];
 const SEG_ACTIVOS_COLS = [
   {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'},
+  {key:'estado', label:'Estado', get:o=>estadoInfo(o.estado).label},
   {key:'cantidadAprobada', label:'Cant. aprobada', get:o=>metaAprobada(o)},
   {key:'cantidadRecibida', label:'Ya recibido', get:o=>o.cantidadRecibida??0},
   {key:'pendiente', label:'Pendiente', get:o=>pendienteCompra(o)},
@@ -861,6 +864,97 @@ function wireSortHeaders(container, sortStateKey, rerenderFn){
   });
 }
 
+/* ============================ SELECCIÓN DE RANGO DE CELDAS ESTILO EXCEL ============================ */
+/* Permite, en las tablas de Seguimiento/Historial, arrastrar sobre varias casillas/tickets para que
+   queden resaltadas (como al seleccionar un rango en Excel) y copiarlas con Ctrl+C como texto separado
+   por tabulaciones, listo para pegar en Excel. */
+let cellSelection = { table:null, startRow:null, startCol:null, endRow:null, endCol:null, dragging:false };
+
+function clearCellSelection(){
+  document.querySelectorAll('.cell-range-selected').forEach(td=>{
+    td.classList.remove('cell-range-selected');
+    td.style.boxShadow = '';
+  });
+  cellSelection = { table:null, startRow:null, startCol:null, endRow:null, endCol:null, dragging:false };
+}
+
+function paintCellSelection(){
+  const { table, startRow, startCol, endRow, endCol } = cellSelection;
+  if(!table) return;
+  document.querySelectorAll('.cell-range-selected').forEach(td=>{
+    td.classList.remove('cell-range-selected');
+    td.style.boxShadow = '';
+  });
+  const r1 = Math.min(startRow,endRow), r2 = Math.max(startRow,endRow);
+  const c1 = Math.min(startCol,endCol), c2 = Math.max(startCol,endCol);
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach((tr,ri)=>{
+    if(ri<r1 || ri>r2) return;
+    const cells = tr.children;
+    for(let ci=c1; ci<=c2 && ci<cells.length; ci++){
+      const td = cells[ci];
+      td.classList.add('cell-range-selected');
+      const shadows = [];
+      if(ri===r1) shadows.push('inset 0 2px 0 0 var(--brand)');
+      if(ri===r2) shadows.push('inset 0 -2px 0 0 var(--brand)');
+      if(ci===c1) shadows.push('inset 2px 0 0 0 var(--brand)');
+      if(ci===c2) shadows.push('inset -2px 0 0 0 var(--brand)');
+      td.style.boxShadow = shadows.join(', ');
+    }
+  });
+}
+
+function enableCellRangeSelection(table){
+  if(!table) return;
+  table.querySelectorAll('tbody td').forEach(td=>{
+    td.addEventListener('mousedown', (e)=>{
+      if(e.target.closest('input,select,button,textarea,a')) return; // deja clics/edición normales
+      const tr = td.parentElement;
+      const rowIndex = Array.from(tr.parentElement.children).indexOf(tr);
+      const colIndex = Array.from(tr.children).indexOf(td);
+      cellSelection = { table, startRow: rowIndex, startCol: colIndex, endRow: rowIndex, endCol: colIndex, dragging: true };
+      paintCellSelection();
+      e.preventDefault();
+    });
+    td.addEventListener('mouseenter', ()=>{
+      if(!cellSelection.dragging || cellSelection.table!==table) return;
+      const tr = td.parentElement;
+      const rowIndex = Array.from(tr.parentElement.children).indexOf(tr);
+      const colIndex = Array.from(tr.children).indexOf(td);
+      cellSelection.endRow = rowIndex; cellSelection.endCol = colIndex;
+      paintCellSelection();
+    });
+  });
+}
+
+document.addEventListener('mouseup', ()=>{ cellSelection.dragging = false; });
+document.addEventListener('mousedown', (e)=>{
+  if(cellSelection.table && !e.target.closest('table')) clearCellSelection();
+});
+document.addEventListener('copy', (e)=>{
+  const { table, startRow, startCol, endRow, endCol } = cellSelection;
+  if(!table) return;
+  const r1 = Math.min(startRow,endRow), r2 = Math.max(startRow,endRow);
+  const c1 = Math.min(startCol,endCol), c2 = Math.max(startCol,endCol);
+  const rows = table.querySelectorAll('tbody tr');
+  const lines = [];
+  rows.forEach((tr,ri)=>{
+    if(ri<r1 || ri>r2) return;
+    const cells = tr.children;
+    const vals = [];
+    for(let ci=c1; ci<=c2 && ci<cells.length; ci++){
+      const td = cells[ci];
+      const field = td.querySelector('input,select');
+      vals.push(field ? field.value : td.textContent.trim());
+    }
+    lines.push(vals.join('\t'));
+  });
+  if(lines.length){
+    e.clipboardData.setData('text/plain', lines.join('\n'));
+    e.preventDefault();
+  }
+});
+
 /* ---- Celda de texto seleccionable/copiable que se convierte en campo editable al hacer clic ---- */
 function segCell(o, field, opts={}){
   const editing = state.segEditing && state.segEditing.id===o.id && state.segEditing.field===field;
@@ -885,6 +979,7 @@ function segCell(o, field, opts={}){
 
 function renderSeguimiento(){
   const mount = document.getElementById('viewMount');
+  clearCellSelection();
   let buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado);
   let activos = orders.filter(o=>o.estado==='compra' && !o.eliminado);
   let pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado);
@@ -913,15 +1008,16 @@ function renderSeguimiento(){
         </table>
       </div>
       ` : ''}
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:2px;">
         <div class="section-label" style="margin-bottom:0;">Seguimiento de compras · activas (${activos.length})</div>
         <button class="btn btn-primary" id="exportExcelBtn">Exportar reporte Excel</button>
       </div>
+      <div class="helper-text" style="margin-bottom:6px;">Arrastra sobre varias casillas para seleccionarlas (como en Excel) y usa Ctrl+C para copiarlas.</div>
       <div class="table-scroll" id="segTablaActivos">
         <table class="oc-table seguimiento-table">
           <thead><tr>${sortableTh(SEG_ACTIVOS_COLS, state.segSortActivos, '<th style="cursor:default;"></th>')}</tr></thead>
           <tbody>
-            ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="16" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
+            ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="17" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -951,6 +1047,10 @@ function renderSeguimiento(){
   wireSortHeaders(document.getElementById('segTablaBuscando')||mount, 'segSortBuscando', renderSeguimiento);
   wireSortHeaders(document.getElementById('segTablaActivos'), 'segSortActivos', renderSeguimiento);
   wireSortHeaders(document.getElementById('segTablaPendientes'), 'segSortPendientes', renderSeguimiento);
+  const tBuscando = document.querySelector('#segTablaBuscando table');
+  if(tBuscando) enableCellRangeSelection(tBuscando);
+  enableCellRangeSelection(document.querySelector('#segTablaActivos table'));
+  enableCellRangeSelection(document.querySelector('#segTablaPendientes table'));
   document.getElementById('exportExcelBtn').addEventListener('click', exportarExcel);
   mount.querySelectorAll('button[data-abrir-factura]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.abrirFactura; render(); });
@@ -962,9 +1062,11 @@ function renderSeguimiento(){
 
 function seguimientoRow(o){
   const pend = pendienteCompra(o);
+  const est = estadoInfo(o.estado);
   return `
     <tr data-id="${o.id}">
       <td class="tabular">${o.folio}</td><td>${o.producto}</td>
+      <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
       <td class="tabular">${metaAprobada(o)} ${o.unidadMedida}</td>
       <td class="tabular">${o.cantidadRecibida ?? 0} ${o.unidadMedida}</td>
       <td class="tabular" style="${pend>0?'color:var(--amber);font-weight:700;':''}">${pend>0 ? pend+' '+o.unidadMedida : '—'}</td>
@@ -1034,11 +1136,13 @@ function wireSeguimientoInputs(){
 /* ============================ HISTORIAL DE COMPRAS COMPLETADAS ============================ */
 function renderHistorial(){
   const mount = document.getElementById('viewMount');
+  clearCellSelection();
   let historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado);
   historial = sortRows(historial, state.historialSort, HISTORIAL_COLS);
   mount.innerHTML = `
     <div class="table-wrap">
-      <div class="section-label">Historial de compras (${historial.length})</div>
+      <div class="section-label" style="margin-bottom:2px;">Historial de compras (${historial.length})</div>
+      <div class="helper-text" style="margin-bottom:6px;">Arrastra sobre varias casillas para seleccionarlas (como en Excel) y usa Ctrl+C para copiarlas.</div>
       <div class="table-scroll" id="historialTabla">
         <table class="oc-table">
           <thead><tr>${sortableTh(HISTORIAL_COLS, state.historialSort)}</tr></thead>
@@ -1060,6 +1164,7 @@ function renderHistorial(){
   `;
   mount.querySelectorAll('.history-row').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
   wireSortHeaders(document.getElementById('historialTabla'), 'historialSort', renderHistorial);
+  enableCellRangeSelection(document.querySelector('#historialTabla table'));
 }
 
 /* ============================ GESTION DE USUARIOS ============================ */
