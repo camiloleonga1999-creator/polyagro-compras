@@ -154,6 +154,8 @@
   .seg-input, .seg-select{width:100%;min-width:96px;border:1px solid var(--line);border-radius:4px;padding:6px 7px;font-size:12px;background:var(--surface);color:var(--ink);}
   .seg-input:focus, .seg-select:focus{outline:none;border-color:var(--brand);background:var(--brand-tint);}
   .seg-input.num-input{font-family:var(--mono);}
+  .seg-editable{display:inline-block;min-width:60px;padding:4px 3px;border-radius:4px;cursor:text;user-select:text;}
+  .seg-editable:hover{background:var(--brand-tint);}
   .seguimiento-table tbody tr:hover{background:transparent;cursor:default;}
   .history-row{cursor:pointer;}
 
@@ -299,6 +301,7 @@ const ESTADOS = [
 function estadoInfo(key){ return ESTADOS.find(e=>e.key===key) || ESTADOS[0]; }
 
 const ESTADO_COMPRA = [
+  {key:'aprobado',       label:'Aprobado',       color:'var(--gray)',  tint:'var(--gray-tint)'},
   {key:'cotizando',      label:'Cotizando',      color:'var(--amber)', tint:'var(--amber-tint)'},
   {key:'pendiente_pago', label:'Pendiente pago', color:'var(--rust)',  tint:'var(--rust-tint)'},
   {key:'en_transito',    label:'En tránsito',    color:'var(--steel)', tint:'var(--steel-tint)'},
@@ -328,6 +331,11 @@ let state = {
   tableSort: {col:'fechaSolicitud', dir:'desc'},
   tableFilterEstado: 'todos',
   tableSearch: '',
+  segSortActivos: {col:'fechaSolicitud', dir:'asc'},
+  segSortBuscando: {col:'fechaSolicitud', dir:'asc'},
+  segSortPendientes: {col:'fechaRecepcion', dir:'asc'},
+  segEditing: null,
+  historialSort: {col:'fechaAprobacion', dir:'asc'},
 };
 
 const $app = document.getElementById('app');
@@ -570,7 +578,7 @@ function renderApp(){
         <div class="view-toggle">
           <button data-v="kanban" class="${state.view==='kanban'?'active':''}">Kanban</button>
           <button data-v="tabla" class="${state.view==='tabla'?'active':''}">Tabla</button>
-          ${u.rol==='compras' ? `<button data-v="seguimiento" class="${state.view==='seguimiento'?'active':''}">Seguimiento</button><button data-v="usuarios" class="${state.view==='usuarios'?'active':''}">Usuarios</button><button data-v="papelera" class="${state.view==='papelera'?'active':''}">Papelera</button>` : ''}
+          ${u.rol==='compras' ? `<button data-v="seguimiento" class="${state.view==='seguimiento'?'active':''}">Seguimiento</button><button data-v="historial" class="${state.view==='historial'?'active':''}">Historial</button><button data-v="usuarios" class="${state.view==='usuarios'?'active':''}">Usuarios</button><button data-v="papelera" class="${state.view==='papelera'?'active':''}">Papelera</button>` : ''}
         </div>
         <div class="who">
           <div class="avatar" style="background:${avatarColor(u.nombre)}">${initials(u.nombre)}</div>
@@ -601,6 +609,7 @@ function renderApp(){
   if(state.view==='kanban') renderKanban();
   else if(state.view==='tabla') renderTable();
   else if(state.view==='seguimiento' && u.rol==='compras') renderSeguimiento();
+  else if(state.view==='historial' && u.rol==='compras') renderHistorial();
   else if(state.view==='usuarios' && u.rol==='compras') renderUsuarios();
   else if(state.view==='papelera' && u.rol==='compras') renderPapelera();
   else renderKanban();
@@ -792,24 +801,104 @@ function exportarExcel(){
   XLSX.writeFile(wb, `reporte_compras_polyagro_${today()}.xlsx`);
 }
 
+/* ---- Definición de columnas ordenables por tabla de Seguimiento/Historial ---- */
+const SEG_BUSCANDO_COLS = [
+  {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'},
+  {key:'cantidad', label:'Cant. / UM'}, {key:'solicitante', label:'Solicitante'},
+  {key:'area', label:'Área'}, {key:'fechaSolicitud', label:'Fecha solicitud'},
+  {key:'proveedor', label:'Proveedor'},
+];
+const SEG_ACTIVOS_COLS = [
+  {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'},
+  {key:'cantidadAprobada', label:'Cant. aprobada', get:o=>metaAprobada(o)},
+  {key:'cantidadRecibida', label:'Ya recibido', get:o=>o.cantidadRecibida??0},
+  {key:'pendiente', label:'Pendiente', get:o=>pendienteCompra(o)},
+  {key:'solicitante', label:'Solicitante'}, {key:'area', label:'Área'},
+  {key:'fechaSolicitud', label:'Fecha solicitud'}, {key:'fechaAprobacion', label:'Fecha aprobación'},
+  {key:'comentarioAprobacion', label:'Observ. aprobación'},
+  {key:'proveedor', label:'Proveedor'}, {key:'precioUnitario', label:'Precio unit.'},
+  {key:'total', label:'Total', get:o=>total(o)}, {key:'observacionesCompras', label:'Observaciones compras'},
+  {key:'estadoCompra', label:'Estado de compra'},
+];
+const SEG_PENDIENTES_COLS = [
+  {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'}, {key:'area', label:'Área'},
+  {key:'cantidadRecibida', label:'Cant. / UM', get:o=>o.cantidadRecibida ?? effectiveCantidad(o)},
+  {key:'proveedor', label:'Proveedor'}, {key:'precioUnitario', label:'Precio unit.'},
+  {key:'total', label:'Total', get:o=>total(o)}, {key:'recepcionadoPor', label:'Recepcionado por'},
+  {key:'fechaRecepcion', label:'Fecha recepción'},
+];
+const HISTORIAL_COLS = [
+  {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'}, {key:'area', label:'Área'},
+  {key:'proveedor', label:'Proveedor'}, {key:'total', label:'Total', get:o=>total(o)},
+  {key:'estadoCompra', label:'Estado de compra'}, {key:'estado', label:'Estado general'},
+  {key:'fechaAprobacion', label:'Fecha aprobación'},
+];
+
+function sortRows(rows, sortState, colDefs){
+  const {col,dir} = sortState;
+  const colDef = colDefs.find(c=>c.key===col);
+  const copy = rows.slice();
+  copy.sort((a,b)=>{
+    let av = colDef && colDef.get ? colDef.get(a) : a[col];
+    let bv = colDef && colDef.get ? colDef.get(b) : b[col];
+    if(typeof av === 'string'){ av=(av||'').toLowerCase(); } if(av==null) av='';
+    if(typeof bv === 'string'){ bv=(bv||'').toLowerCase(); } if(bv==null) bv='';
+    if(av<bv) return dir==='asc'?-1:1; if(av>bv) return dir==='asc'?1:-1; return 0;
+  });
+  return copy;
+}
+function sortableTh(colDefs, sortState, extra){
+  return colDefs.map(c=>`<th data-col="${c.key}">${c.label}${sortState.col===c.key ? `<span class="arrow">${sortState.dir==='asc'?'▲':'▼'}</span>` : ''}</th>`).join('') + (extra||'');
+}
+function wireSortHeaders(container, sortStateKey, rerenderFn){
+  container.querySelectorAll('th[data-col]').forEach(th=>{
+    th.style.cursor='pointer';
+    th.addEventListener('click', ()=>{
+      const col = th.dataset.col; const s = state[sortStateKey];
+      if(s.col===col) s.dir = s.dir==='asc'?'desc':'asc'; else { s.col=col; s.dir='asc'; }
+      rerenderFn();
+    });
+  });
+}
+
+/* ---- Celda de texto seleccionable/copiable que se convierte en campo editable al hacer clic ---- */
+function segCell(o, field, opts={}){
+  const editing = state.segEditing && state.segEditing.id===o.id && state.segEditing.field===field;
+  if(field==='estadoCompra'){
+    if(editing){
+      return `<select class="seg-select seg-active" data-id="${o.id}" data-field="estadoCompra">${ESTADO_COMPRA_EDITABLE.map(ec=>`<option value="${ec.key}" ${o.estadoCompra===ec.key?'selected':''}>${ec.label}</option>`).join('')}</select>`;
+    }
+    const ec = estadoCompraInfo(o.estadoCompra);
+    return `<span class="seg-text seg-editable" data-id="${o.id}" data-field="estadoCompra" tabindex="0"><span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span></span>`;
+  }
+  if(editing){
+    if(field==='precioUnitario'){
+      return `<input type="number" class="seg-input num-input seg-active" data-id="${o.id}" data-field="precioUnitario" value="${o.precioUnitario||''}" min="0" placeholder="0">`;
+    }
+    return `<input type="text" class="seg-input seg-active" data-id="${o.id}" data-field="${field}" value="${o[field]||''}" placeholder="${opts.placeholder||''}">`;
+  }
+  let display;
+  if(field==='precioUnitario') display = o.precioUnitario ? fmtCOP(o.precioUnitario) : `<span class="helper-text">${opts.placeholder||'—'}</span>`;
+  else display = o[field] ? o[field] : `<span class="helper-text">${opts.placeholder||'—'}</span>`;
+  return `<span class="seg-text seg-editable" data-id="${o.id}" data-field="${field}" tabindex="0">${display}</span>`;
+}
+
 function renderSeguimiento(){
   const mount = document.getElementById('viewMount');
-  const buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado).sort((a,b)=> (a.fechaSolicitud||'').localeCompare(b.fechaSolicitud||''));
-  const activos = orders.filter(o=>o.estado==='compra' && !o.eliminado).sort((a,b)=> (a.fechaAprobacion||'').localeCompare(b.fechaAprobacion||''));
-  const pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado).sort((a,b)=> (a.fechaRecepcion||'').localeCompare(b.fechaRecepcion||''));
-  const historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado).sort((a,b)=> (b.fechaAprobacion||'').localeCompare(a.fechaAprobacion||''));
+  let buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado);
+  let activos = orders.filter(o=>o.estado==='compra' && !o.eliminado);
+  let pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado);
+  buscandoCotizacion = sortRows(buscandoCotizacion, state.segSortBuscando, SEG_BUSCANDO_COLS);
+  activos = sortRows(activos, state.segSortActivos, SEG_ACTIVOS_COLS);
+  pendientesFactura = sortRows(pendientesFactura, state.segSortPendientes, SEG_PENDIENTES_COLS);
 
   mount.innerHTML = `
     <div class="table-wrap">
       ${buscandoCotizacion.length ? `
       <div class="section-label">Buscando cotización (${buscandoCotizacion.length})</div>
-      <div class="table-scroll" style="margin-bottom:22px;">
+      <div class="table-scroll" style="margin-bottom:22px;" id="segTablaBuscando">
         <table class="oc-table">
-          <thead><tr>
-            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. / UM</th>
-            <th style="cursor:default;">Solicitante</th><th style="cursor:default;">Área</th><th style="cursor:default;">Fecha solicitud</th>
-            <th style="cursor:default;">Proveedor</th><th style="cursor:default;">Cotización</th><th style="cursor:default;"></th>
-          </tr></thead>
+          <thead><tr>${sortableTh(SEG_BUSCANDO_COLS, state.segSortBuscando, '<th style="cursor:default;">Cotización</th><th style="cursor:default;"></th>')}</tr></thead>
           <tbody>
             ${buscandoCotizacion.map(o=>`
               <tr>
@@ -828,16 +917,9 @@ function renderSeguimiento(){
         <div class="section-label" style="margin-bottom:0;">Seguimiento de compras · activas (${activos.length})</div>
         <button class="btn btn-primary" id="exportExcelBtn">Exportar reporte Excel</button>
       </div>
-      <div class="table-scroll">
+      <div class="table-scroll" id="segTablaActivos">
         <table class="oc-table seguimiento-table">
-          <thead><tr>
-            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. aprobada</th>
-            <th style="cursor:default;">Ya recibido</th><th style="cursor:default;">Pendiente</th>
-            <th style="cursor:default;">Solicitante</th><th style="cursor:default;">Área</th>
-            <th style="cursor:default;">Fecha solicitud</th><th style="cursor:default;">Fecha aprobación</th><th style="cursor:default;">Observ. aprobación</th>
-            <th style="cursor:default;">Proveedor</th><th style="cursor:default;">Precio unit.</th>
-            <th style="cursor:default;">Total</th><th style="cursor:default;">Observaciones compras</th><th style="cursor:default;">Estado de compra</th><th style="cursor:default;"></th>
-          </tr></thead>
+          <thead><tr>${sortableTh(SEG_ACTIVOS_COLS, state.segSortActivos, '<th style="cursor:default;"></th>')}</tr></thead>
           <tbody>
             ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="16" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
           </tbody>
@@ -845,54 +927,31 @@ function renderSeguimiento(){
       </div>
 
       <div class="section-label" style="margin:22px 0 8px;">Pendientes de facturar (${pendientesFactura.length})</div>
-      <div class="table-scroll">
+      <div class="table-scroll" id="segTablaPendientes">
         <table class="oc-table seguimiento-table">
-          <thead><tr>
-            <th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Cant. / UM</th><th style="cursor:default;">Proveedor</th>
-            <th style="cursor:default;">Precio unit.</th><th style="cursor:default;">Total</th>
-            <th style="cursor:default;">Recepcionado por</th><th style="cursor:default;">Fecha recepción</th>
-            <th style="cursor:default;"></th>
-          </tr></thead>
+          <thead><tr>${sortableTh(SEG_PENDIENTES_COLS, state.segSortPendientes, '<th style="cursor:default;"></th>')}</tr></thead>
           <tbody>
             ${pendientesFactura.length ? pendientesFactura.map(o=>`
               <tr data-id="${o.id}">
-                <td class="tabular">${o.folio}</td><td>${o.producto}</td>
+                <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.area}</td>
                 <td class="tabular">${o.cantidadRecibida ?? effectiveCantidad(o)} ${o.unidadMedida}</td>
-                <td><input type="text" class="seg-input" data-id="${o.id}" data-field="proveedor" value="${o.proveedor||''}" placeholder="Proveedor"></td>
-                <td><input type="number" class="seg-input num-input" data-id="${o.id}" data-field="precioUnitario" value="${o.precioUnitario||''}" min="0" placeholder="0"></td>
+                <td>${segCell(o,'proveedor',{placeholder:'Proveedor'})}</td>
+                <td>${segCell(o,'precioUnitario',{placeholder:'0'})}</td>
                 <td class="num tabular">${o.precioUnitario?fmtCOP(total(o)):'—'}</td>
                 <td>${o.recepcionadoPor||'—'}</td><td class="tabular">${fmtDateTime(o.fechaRecepcion)}</td>
                 <td><button class="btn btn-primary" data-abrir-factura="${o.id}" style="padding:5px 10px;font-size:11px;white-space:nowrap;">Agregar factura</button></td>
               </tr>
-            `).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay pedidos recibidos a la espera de factura.</td></tr>`}
+            `).join('') : `<tr><td colspan="10" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay pedidos recibidos a la espera de factura.</td></tr>`}
           </tbody>
         </table>
       </div>
-
-      ${historial.length ? `
-        <div class="section-label" style="margin:22px 0 8px;">Historial reciente</div>
-        <div class="table-scroll">
-          <table class="oc-table">
-            <thead><tr><th style="cursor:default;">Folio</th><th style="cursor:default;">Producto</th><th style="cursor:default;">Proveedor</th><th style="cursor:default;">Total</th><th style="cursor:default;">Estado de compra</th><th style="cursor:default;">Estado general</th></tr></thead>
-            <tbody>
-              ${historial.slice(0,10).map(o=>{
-                const ec = estadoCompraInfo(o.estadoCompra); const est = estadoInfo(o.estado);
-                return `<tr class="history-row" data-id="${o.id}">
-                  <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.proveedor||'—'}</td>
-                  <td class="num">${o.precioUnitario?fmtCOP(total(o)):'—'}</td>
-                  <td><span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span></td>
-                  <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      ` : ''}
     </div>
   `;
   wireSeguimientoInputs();
+  wireSortHeaders(document.getElementById('segTablaBuscando')||mount, 'segSortBuscando', renderSeguimiento);
+  wireSortHeaders(document.getElementById('segTablaActivos'), 'segSortActivos', renderSeguimiento);
+  wireSortHeaders(document.getElementById('segTablaPendientes'), 'segSortPendientes', renderSeguimiento);
   document.getElementById('exportExcelBtn').addEventListener('click', exportarExcel);
-  mount.querySelectorAll('.history-row').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
   mount.querySelectorAll('button[data-abrir-factura]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.abrirFactura; render(); });
   });
@@ -913,31 +972,55 @@ function seguimientoRow(o){
       <td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
       <td class="tabular">${fmtDate(o.fechaAprobacion)}</td>
       <td style="white-space:normal;max-width:180px;">${o.comentarioAprobacion || '—'}</td>
-      <td><input type="text" class="seg-input" data-id="${o.id}" data-field="proveedor" value="${o.proveedor||''}" placeholder="Proveedor"></td>
-      <td><input type="number" class="seg-input num-input" data-id="${o.id}" data-field="precioUnitario" value="${o.precioUnitario||''}" min="0" placeholder="0"></td>
+      <td>${segCell(o,'proveedor',{placeholder:'Proveedor'})}</td>
+      <td>${segCell(o,'precioUnitario',{placeholder:'0'})}</td>
       <td class="num tabular">${o.precioUnitario ? fmtCOP(total(o)) : '—'}</td>
-      <td><input type="text" class="seg-input" data-id="${o.id}" data-field="observacionesCompras" value="${o.observacionesCompras||''}" placeholder="Notas de compras" style="min-width:140px;"></td>
-      <td><select class="seg-select" data-id="${o.id}">${ESTADO_COMPRA_EDITABLE.map(ec=>`<option value="${ec.key}" ${o.estadoCompra===ec.key?'selected':''}>${ec.label}</option>`).join('')}</select></td>
+      <td>${segCell(o,'observacionesCompras',{placeholder:'Notas de compras'})}</td>
+      <td>${segCell(o,'estadoCompra')}</td>
       <td><button class="btn" data-enviar="${o.id}" style="padding:5px 8px;font-size:11px;white-space:nowrap;">Enviar a recepción</button></td>
     </tr>
   `;
 }
 
 function wireSeguimientoInputs(){
+  document.querySelectorAll('.seg-editable').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.segEditing = { id: el.dataset.id, field: el.dataset.field };
+      if(state.view==='seguimiento') renderSeguimiento();
+    });
+  });
   document.querySelectorAll('.seg-input').forEach(el=>{
+    if(el.classList.contains('seg-active')) el.focus();
     el.addEventListener('change', async ()=>{
       const id = el.dataset.id, field = el.dataset.field;
       let payload;
       if(field==='precioUnitario'){ payload = { precioUnitario: Number(el.value)||0 }; }
       else { payload = { [field]: el.value }; }
+      state.segEditing = null;
       await runAction(null, async ()=>{ await updateDoc(doc(db,'solicitudes', id), payload); });
+      if(state.view==='seguimiento') renderSeguimiento();
+    });
+    el.addEventListener('blur', ()=>{
+      if(state.segEditing && state.segEditing.id===el.dataset.id && state.segEditing.field===el.dataset.field){
+        state.segEditing = null;
+        if(state.view==='seguimiento') renderSeguimiento();
+      }
     });
   });
   document.querySelectorAll('.seg-select').forEach(el=>{
+    if(el.classList.contains('seg-active')) el.focus();
     el.addEventListener('change', async ()=>{
       const id = el.dataset.id, ec = el.value;
       const estado = ec==='cancelado' ? 'cancelada' : 'compra';
+      state.segEditing = null;
       await runAction(null, async ()=>{ await updateDoc(doc(db,'solicitudes', id), { estadoCompra: ec, estado }); });
+      if(state.view==='seguimiento') renderSeguimiento();
+    });
+    el.addEventListener('blur', ()=>{
+      if(state.segEditing && state.segEditing.id===el.dataset.id && state.segEditing.field==='estadoCompra'){
+        state.segEditing = null;
+        if(state.view==='seguimiento') renderSeguimiento();
+      }
     });
   });
   document.querySelectorAll('button[data-enviar]').forEach(btn=>{
@@ -946,6 +1029,37 @@ function wireSeguimientoInputs(){
       await runAction(btn, async ()=>{ await updateDoc(doc(db,'solicitudes', btn.dataset.enviar), { estado:'por_recibir' }); });
     });
   });
+}
+
+/* ============================ HISTORIAL DE COMPRAS COMPLETADAS ============================ */
+function renderHistorial(){
+  const mount = document.getElementById('viewMount');
+  let historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado);
+  historial = sortRows(historial, state.historialSort, HISTORIAL_COLS);
+  mount.innerHTML = `
+    <div class="table-wrap">
+      <div class="section-label">Historial de compras (${historial.length})</div>
+      <div class="table-scroll" id="historialTabla">
+        <table class="oc-table">
+          <thead><tr>${sortableTh(HISTORIAL_COLS, state.historialSort)}</tr></thead>
+          <tbody>
+            ${historial.length ? historial.map(o=>{
+              const ec = estadoCompraInfo(o.estadoCompra); const est = estadoInfo(o.estado);
+              return `<tr class="history-row" data-id="${o.id}">
+                <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.area}</td><td>${o.proveedor||'—'}</td>
+                <td class="num">${o.precioUnitario?fmtCOP(total(o)):'—'}</td>
+                <td><span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span></td>
+                <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
+                <td class="tabular">${fmtDate(o.fechaAprobacion)}</td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-faint);padding:26px;">Aún no hay compras completadas.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  mount.querySelectorAll('.history-row').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
+  wireSortHeaders(document.getElementById('historialTabla'), 'historialSort', renderHistorial);
 }
 
 /* ============================ GESTION DE USUARIOS ============================ */
@@ -1406,7 +1520,7 @@ function wireFooterActions(o, f){
     const cantidadAprobada = Number(document.getElementById('f_cantidadAprobada').value)||0;
     const number = document.getElementById('f_wa').value.trim() || state.whatsappNumber;
     const ok = await runAction(e.target, async ()=>{
-      await updateDoc(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'cotizando', aprobador: state.currentUser.nombre, fechaAprobacion: today(), comentarioAprobacion: comentario, cantidadAprobada });
+      await updateDoc(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'aprobado', aprobador: state.currentUser.nombre, fechaAprobacion: today(), comentarioAprobacion: comentario, cantidadAprobada });
     });
     if(ok){ state.whatsappNumber = number; sendWhatsAppNotification([{...o, cantidad: cantidadAprobada}], number); closeDetail(); }
   });
@@ -1500,7 +1614,7 @@ function wireFooterActions(o, f){
           aprobador: o.aprobador, fechaAprobacion: today(),
           comentarioAprobacion: `Faltante del ticket ${o.folio}, continúa directo en compras.`,
           cantidadAprobada: pendiente,
-          proveedor: o.proveedor||'', precioUnitario: o.precioUnitario||0, facturas:[], estadoCompra:'cotizando',
+          proveedor: o.proveedor||'', precioUnitario: o.precioUnitario||0, facturas:[], estadoCompra:'aprobado',
           cotizacionUrl:null, cotizacionRuta:null, cotizacionNombre:null, cotizacionSubidaPor:null, cotizacionSubidaEn:null, sinCotizacion:false,
           fechaRecepcion:'', entregaOk:null, observacionesRecepcion:'', recepcionadoPor:'', cantidadRecibida:null,
           observacionesCompras:'',
@@ -1572,7 +1686,7 @@ function renderBulkApproveModal(){
     const ok = await runAction(e.target, async ()=>{
       const batch = writeBatch(db);
       itemsConCantidadAprobada.forEach(({o, cantidadAprobada})=>{
-        batch.update(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'cotizando', aprobador: state.currentUser.nombre, fechaAprobacion: fecha, comentarioAprobacion: comentario, cantidadAprobada });
+        batch.update(doc(db,'solicitudes', o.id), { estado:'compra', estadoCompra:'aprobado', aprobador: state.currentUser.nombre, fechaAprobacion: fecha, comentarioAprobacion: comentario, cantidadAprobada });
       });
       await batch.commit();
     });
