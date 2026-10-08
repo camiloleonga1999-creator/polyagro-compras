@@ -201,6 +201,13 @@
   .section-label{font-size:11.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;}
   .helper-text{font-size:11.5px;color:var(--ink-faint);line-height:1.5;margin-top:2px;}
 
+  .section-toggle{display:flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .section-toggle button{background:var(--surface);border:none;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+  .section-toggle button.active.sec-compras{background:var(--brand);color:#fff;}
+  .section-toggle button.active.sec-proyectos{background:var(--steel);color:#fff;}
+  .topbar.proyectos{border-bottom:3px solid var(--steel);}
+  .proy-tag{display:inline-block;font-size:9.5px;font-weight:600;color:var(--steel);background:var(--steel-tint);padding:1px 6px;border-radius:20px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}
+  .card-proy{margin-top:5px;}
   ::-webkit-scrollbar{height:8px;width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:4px;}
 </style>
@@ -324,6 +331,7 @@ let state = {
   selectedLoginId: null,
   loginError: null,
   view: 'kanban',
+  seccion: 'compras',
   detailOrderId: null,
   newOrderOpen: false,
   bulkApproveOpen: false,
@@ -359,6 +367,8 @@ function listaFacturas(o){
 function total(o){ return (o.precioUnitario||0) * effectiveCantidad(o); }
 function hasCompraInfo(o){ return !!o.proveedor; }
 function ownOrders(o, user){ return o.solicitante === user.nombre; }
+function enSeccion(o){ return state.seccion==='proyectos' ? !!o.esProyecto : !o.esProyecto; }
+function proyectosExistentes(){ return [...new Set(orders.filter(o=>o.esProyecto && o.proyecto).map(o=>o.proyecto))].sort(); }
 
 function waFieldMarkup(inputId, selectId){
   if(whatsappContactos.length){
@@ -387,12 +397,12 @@ function wireWaField(inputId, selectId){
 function sendWhatsAppNotification(items, number){
   const fechaTxt = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});
   let msg = `*Polyagro - Aprobacion de compras*\nAprobado por: ${state.currentUser.nombre}\nFecha: ${fechaTxt}\n\n`;
-  items.forEach((o,i)=>{ msg += `${i+1}. ${o.folio} - ${o.producto}\n   Cantidad: ${o.cantidad} ${o.unidadMedida}\n   Obs: ${o.observaciones || 'Sin observaciones'}\n\n`; });
+  items.forEach((o,i)=>{ msg += `${i+1}. ${o.folio} - ${o.producto}${o.esProyecto ? ' [Proyecto: '+(o.proyecto||'s/n')+']' : ''}\n   Cantidad: ${o.cantidad} ${o.unidadMedida}\n   Obs: ${o.observaciones || 'Sin observaciones'}\n\n`; });
   const cleanNumber = number.replace(/[^0-9]/g,'');
   window.open(`https://wa.me/${cleanNumber}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-async function nextFolio(){
+async function nextFolio(prefijo='OC'){
   const counterRef = doc(db, 'contadores', 'solicitudes');
   const n = await runTransaction(db, async (tx)=>{
     const snap = await tx.get(counterRef);
@@ -401,7 +411,7 @@ async function nextFolio(){
     tx.set(counterRef, { valor: siguiente });
     return siguiente;
   });
-  return 'OC-' + String(n).padStart(4,'0');
+  return prefijo + '-' + String(n).padStart(4,'0');
 }
 
 async function runAction(btn, fn){
@@ -573,10 +583,14 @@ function renderApp(){
   const u = state.currentUser;
   const showBulkBar = u.rol==='aprobador' && state.selectedPendingIds.size>0;
   $app.innerHTML = `
-    <div class="topbar">
-      <div class="brand-mark"><div class="dot"></div><span class="title">Polyagro · Compras</span><span class="subtitle">${ROLE_LABEL[u.rol]}</span></div>
+    <div class="topbar ${state.seccion==='proyectos'?'proyectos':''}">
+      <div class="brand-mark"><div class="dot" style="background:${state.seccion==='proyectos'?'var(--steel)':'var(--brand)'}"></div><span class="title">Polyagro · ${state.seccion==='proyectos'?'Proyectos':'Compras'}</span><span class="subtitle">${ROLE_LABEL[u.rol]}</span></div>
       <div class="topbar-right">
-        ${(u.rol==='solicitante'||u.rol==='almacenista') ? `<button class="new-btn" id="newOrderBtn">+ Nueva solicitud</button>` : ''}
+        ${(u.rol==='solicitante'||u.rol==='almacenista') ? `<button class="new-btn" id="newOrderBtn">${state.seccion==='proyectos' ? '+ Nueva solicitud de proyecto' : '+ Nueva solicitud'}</button>` : ''}
+        <div class="section-toggle">
+          <button data-sec="compras" class="sec-compras ${state.seccion==='compras'?'active':''}">Compras</button>
+          <button data-sec="proyectos" class="sec-proyectos ${state.seccion==='proyectos'?'active':''}">Proyectos</button>
+        </div>
         <div class="view-toggle">
           <button data-v="kanban" class="${state.view==='kanban'?'active':''}">Kanban</button>
           <button data-v="tabla" class="${state.view==='tabla'?'active':''}">Tabla</button>
@@ -601,6 +615,7 @@ function renderApp(){
   `;
   document.getElementById('logoutBtn').addEventListener('click', ()=>{ state.currentUser=null; state.selectedLoginId=null; state.selectedPendingIds.clear(); render(); });
   document.querySelectorAll('.view-toggle button').forEach(b=>{ b.addEventListener('click', ()=>{ state.view=b.dataset.v; render(); }); });
+  document.querySelectorAll('.section-toggle button').forEach(b=>{ b.addEventListener('click', ()=>{ state.seccion=b.dataset.sec; state.selectedPendingIds.clear(); render(); }); });
   const newBtn = document.getElementById('newOrderBtn');
   if(newBtn) newBtn.addEventListener('click', ()=>{ state.newOrderOpen=true; render(); });
   const clearSel = document.getElementById('clearSelection');
@@ -632,7 +647,7 @@ function renderKanban(){
     <div class="board-wrap">
       <div class="board">
         ${ESTADOS.map(est=>{
-          const items = orders.filter(o=>o.estado===est.key && !o.eliminado).sort((a,b)=> (b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
+          const items = orders.filter(o=>o.estado===est.key && !o.eliminado && enSeccion(o)).sort((a,b)=> (b.fechaSolicitud||'').localeCompare(a.fechaSolicitud||''));
           const withPrice = items.filter(o=>o.precioUnitario>0);
           const sum = withPrice.reduce((s,o)=>s+total(o),0);
           const selectable = u.rol==='aprobador' && est.key==='pendiente';
@@ -681,6 +696,7 @@ function cardHtml(o, est, selectable){
         <span class="card-area">${o.area}</span>
       </div>
       <div class="card-item">${o.producto}</div>
+      ${o.esProyecto && o.proyecto ? `<div class="card-proy"><span class="proy-tag" title="${o.proyecto}">${o.proyecto}</span></div>` : ''}
       <div class="card-row">${secondRow}</div>
       ${compraBadge}
       <div class="card-bottom">
@@ -692,22 +708,29 @@ function cardHtml(o, est, selectable){
 }
 
 /* ============================ TABLA ============================ */
-const TABLE_COLS = [
+const TABLE_COLS_BASE = [
   {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'}, {key:'area', label:'Área'},
   {key:'solicitante', label:'Solicitante'}, {key:'cantidad', label:'Cant. / UM', num:true},
   {key:'proveedor', label:'Proveedor'}, {key:'total', label:'Total', num:true},
   {key:'estado', label:'Estado'}, {key:'estadoCompra', label:'Estado de compra'}, {key:'fechaSolicitud', label:'Fecha'},
 ];
 
+function tableCols(){
+  if(state.seccion!=='proyectos') return TABLE_COLS_BASE;
+  const cols = TABLE_COLS_BASE.slice();
+  cols.splice(2,0,{key:'proyecto', label:'Proyecto'});
+  return cols;
+}
 function renderTable(){
+  const TABLE_COLS = tableCols();
   const u = state.currentUser;
   const showSelect = u.rol === 'aprobador';
   const mount = document.getElementById('viewMount');
-  let rows = orders.filter(o=>!o.eliminado);
+  let rows = orders.filter(o=>!o.eliminado && enSeccion(o));
   if(state.tableFilterEstado !== 'todos') rows = rows.filter(o=>o.estado===state.tableFilterEstado);
   if(state.tableSearch.trim()){
     const q = state.tableSearch.toLowerCase();
-    rows = rows.filter(o => (o.producto||'').toLowerCase().includes(q) || (o.proveedor||'').toLowerCase().includes(q) || (o.folio||'').toLowerCase().includes(q) || (o.area||'').toLowerCase().includes(q));
+    rows = rows.filter(o => (o.producto||'').toLowerCase().includes(q) || (o.proveedor||'').toLowerCase().includes(q) || (o.folio||'').toLowerCase().includes(q) || (o.area||'').toLowerCase().includes(q) || (o.proyecto||'').toLowerCase().includes(q));
   }
   const {col,dir} = state.tableSort;
   rows.sort((a,b)=>{
@@ -719,7 +742,7 @@ function renderTable(){
   mount.innerHTML = `
     <div class="table-wrap">
       <div class="table-controls">
-        <input class="search-input" id="searchInput" placeholder="Buscar producto, proveedor, área o folio..." value="${state.tableSearch}">
+        <input class="search-input" id="searchInput" placeholder="Buscar producto, proveedor, área, proyecto o folio..." value="${state.tableSearch}">
         <select class="filter-select" id="filterEstado">
           <option value="todos" ${state.tableFilterEstado==='todos'?'selected':''}>Todos los estados</option>
           ${ESTADOS.map(e=>`<option value="${e.key}" ${state.tableFilterEstado===e.key?'selected':''}>${e.label}</option>`).join('')}
@@ -735,7 +758,7 @@ function renderTable(){
             return `
             <tr data-id="${o.id}">
               ${checkboxCell}
-              <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.area}</td><td>${o.solicitante}</td>
+              <td class="tabular">${o.folio}</td><td>${o.producto}</td>${state.seccion==='proyectos' ? `<td>${o.proyecto||'—'}</td>` : ''}<td>${o.area}</td><td>${o.solicitante}</td>
               <td class="num">${effectiveCantidad(o)} ${o.unidadMedida}</td><td>${o.proveedor || '—'}</td>
               <td class="num">${o.precioUnitario ? fmtCOP(total(o)) : '—'}</td>
               <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
@@ -772,12 +795,12 @@ function renderTable(){
 /* ============================ SEGUIMIENTO DE COMPRAS ============================ */
 function exportarExcel(){
   if(typeof XLSX === 'undefined'){ alert('No se pudo cargar el módulo de Excel. Revisa tu conexión a internet e inténtalo de nuevo.'); return; }
-  const rows = orders.filter(o=>o.proveedor && o.estado!=='cancelada' && !o.eliminado).sort((a,b)=> (a.fechaSolicitud||'').localeCompare(b.fechaSolicitud||''));
-  const headers = ['Folio','Producto','Área','Solicitante','Cant. solicitada','Cant. aprobada','Cant. recibida','Unidad','Proveedor','Precio unitario','Total','N° de factura','Fecha de factura','Estado','Estado de compra','Fecha de solicitud','Fecha de aprobación','Observaciones aprobación','Fecha de recepción','Recepcionado por','Nació del faltante de','Continúa en'];
+  const rows = orders.filter(o=>o.proveedor && o.estado!=='cancelada' && !o.eliminado && enSeccion(o)).sort((a,b)=> (a.fechaSolicitud||'').localeCompare(b.fechaSolicitud||''));
+  const headers = ['Folio','Producto','Proyecto','Área','Solicitante','Cant. solicitada','Cant. aprobada','Cant. recibida','Unidad','Proveedor','Precio unitario','Total','N° de factura','Fecha de factura','Estado','Estado de compra','Fecha de solicitud','Fecha de aprobación','Observaciones aprobación','Fecha de recepción','Recepcionado por','Nació del faltante de','Continúa en'];
   const aoa = [headers];
   rows.forEach(o=>{
     aoa.push([
-      o.folio, o.producto, o.area, o.solicitante, o.cantidad, o.cantidadAprobada ?? '', o.cantidadRecibida ?? '', o.unidadMedida,
+      o.folio, o.producto, o.proyecto||'', o.area, o.solicitante, o.cantidad, o.cantidadAprobada ?? '', o.cantidadRecibida ?? '', o.unidadMedida,
       o.proveedor, o.precioUnitario||0, total(o),
       listaFacturas(o).map(f=>f.numero).join(' / ') || '',
       listaFacturas(o).map(f=>f.fecha ? fmtDate(f.fecha) : '').join(' / ') || '',
@@ -794,13 +817,13 @@ function exportarExcel(){
   });
   const totalGasto = rows.reduce((s,o)=>s+total(o),0);
   aoa.push([]);
-  aoa.push(['','','','','','','','','','TOTAL GASTADO', totalGasto]);
+  aoa.push(['','','','','','','','','','','TOTAL GASTADO', totalGasto]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = headers.map(()=>({wch:16}));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Reporte compras');
-  XLSX.writeFile(wb, `reporte_compras_polyagro_${today()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, state.seccion==='proyectos' ? 'Reporte proyectos' : 'Reporte compras');
+  XLSX.writeFile(wb, `reporte_${state.seccion==='proyectos'?'proyectos':'compras'}_polyagro_${today()}.xlsx`);
 }
 
 /* ---- Definición de columnas ordenables por tabla de Seguimiento/Historial ---- */
@@ -980,9 +1003,9 @@ function segCell(o, field, opts={}){
 function renderSeguimiento(){
   const mount = document.getElementById('viewMount');
   clearCellSelection();
-  let buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado);
-  let activos = orders.filter(o=>o.estado==='compra' && !o.eliminado);
-  let pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado);
+  let buscandoCotizacion = orders.filter(o=>o.estado==='buscando_cotizacion' && !o.eliminado && enSeccion(o));
+  let activos = orders.filter(o=>o.estado==='compra' && !o.eliminado && enSeccion(o));
+  let pendientesFactura = orders.filter(o=>o.estado==='completada' && listaFacturas(o).length===0 && !o.eliminado && enSeccion(o));
   buscandoCotizacion = sortRows(buscandoCotizacion, state.segSortBuscando, SEG_BUSCANDO_COLS);
   activos = sortRows(activos, state.segSortActivos, SEG_ACTIVOS_COLS);
   pendientesFactura = sortRows(pendientesFactura, state.segSortPendientes, SEG_PENDIENTES_COLS);
@@ -1137,7 +1160,7 @@ function wireSeguimientoInputs(){
 function renderHistorial(){
   const mount = document.getElementById('viewMount');
   clearCellSelection();
-  let historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado);
+  let historial = orders.filter(o=> ['por_recibir','completada','cancelada'].includes(o.estado) && o.estadoCompra && !o.eliminado && enSeccion(o));
   historial = sortRows(historial, state.historialSort, HISTORIAL_COLS);
   mount.innerHTML = `
     <div class="table-wrap">
@@ -1343,7 +1366,7 @@ function renderUsuarios(){
 /* ============================ PAPELERA ============================ */
 function renderPapelera(){
   const mount = document.getElementById('viewMount');
-  const borrados = orders.filter(o=>o.eliminado).sort((a,b)=> (b.eliminadoEn||'').localeCompare(a.eliminadoEn||''));
+  const borrados = orders.filter(o=>o.eliminado && enSeccion(o)).sort((a,b)=> (b.eliminadoEn||'').localeCompare(a.eliminadoEn||''));
   mount.innerHTML = `
     <div class="table-wrap">
       <div class="section-label">Papelera (${borrados.length})</div>
@@ -1409,10 +1432,11 @@ function renderDetailModal(o){
   overlay.innerHTML = `
     <div class="modal">
       <div class="modal-head">
-        <div><h2>${o.producto}</h2><div class="folio">${o.folio} <span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></div></div>
+        <div><h2>${o.producto}</h2><div class="folio">${o.folio} <span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span>${o.esProyecto ? ` <span class="proy-tag">Proyecto${o.proyecto ? ': '+o.proyecto : ''}</span>` : ''}</div></div>
         <button class="modal-close" id="closeDetail">&times;</button>
       </div>
       <div class="modal-body">
+        ${u.rol==='compras' && o.estado!=='completada' && o.estado!=='cancelada' ? `<div style="margin-bottom:12px;"><button class="btn" id="moverSeccionBtn" style="padding:6px 11px;font-size:11.5px;">${o.esProyecto ? 'Mover a Compras (sin proyecto)' : 'Mover a Proyectos'}</button></div>` : ''}
         ${o.ticketOrigenFolio ? `<div class="history-note" style="background:var(--violet-tint);color:var(--violet);">Este ticket nació del faltante del ticket <button data-open-ticket="${o.ticketOrigenId}" class="btn-ghost" style="padding:0;font-weight:700;text-decoration:underline;color:var(--violet);font-size:inherit;">${o.ticketOrigenFolio}</button>.</div>` : ''}
         ${o.ticketDerivadoFolio ? `<div class="history-note" style="background:var(--violet-tint);color:var(--violet);">El faltante de este ticket continúa en el ticket <button data-open-ticket="${o.ticketDerivadoId}" class="btn-ghost" style="padding:0;font-weight:700;text-decoration:underline;color:var(--violet);font-size:inherit;">${o.ticketDerivadoFolio}</button>.</div>` : ''}
         ${o.estado==='rechazado' ? `<div class="history-note" style="background:var(--rust-tint);color:var(--rust);"><b>Rechazado por ${o.aprobador}</b> el ${fmtDate(o.fechaAprobacion)}.<br>${o.comentarioAprobacion || 'Sin comentario.'}</div>` : ''}
@@ -1525,6 +1549,17 @@ function renderDetailModal(o){
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e=>{ if(e.target.id==='detailOverlay') closeDetail(); });
   document.getElementById('closeDetail').addEventListener('click', closeDetail);
+  const moverBtn = document.getElementById('moverSeccionBtn');
+  if(moverBtn) moverBtn.addEventListener('click', async (e)=>{
+    if(o.esProyecto){
+      if(!confirm('¿Mover esta solicitud a Compras normales? Dejará de aparecer en Proyectos.')) return;
+      await runAction(e.target, ()=>updateDoc(doc(db,'solicitudes', o.id), { esProyecto:false, proyecto:'' }));
+    } else {
+      const nombre = (prompt('Nombre del proyecto al que pertenece esta solicitud:') || '').trim();
+      if(!nombre) return;
+      await runAction(e.target, ()=>updateDoc(doc(db,'solicitudes', o.id), { esProyecto:true, proyecto:nombre }));
+    }
+  });
   overlay.querySelectorAll('button[data-open-ticket]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ state.detailOrderId = btn.dataset.openTicket; render(); });
   });
@@ -1711,6 +1746,7 @@ function wireFooterActions(o, f){
         const nuevaRef = await addDoc(collection(db,'solicitudes'), {
           folio,
           area: o.area, producto: o.producto,
+          esProyecto: !!o.esProyecto, proyecto: o.proyecto || '',
           cantidad: pendiente, unidadMedida: o.unidadMedida,
           observaciones: o.observaciones || '',
           solicitante: o.solicitante,
@@ -1813,9 +1849,22 @@ function renderNewOrderModal(){
   overlay.className = 'overlay'; overlay.id = 'newOverlay';
   overlay.innerHTML = `
     <div class="modal">
-      <div class="modal-head"><div><h2>Nueva solicitud de compra</h2><div class="folio">Se guardará como borrador</div></div><button class="modal-close" id="closeNew">&times;</button></div>
+      <div class="modal-head"><div><h2>${state.seccion==='proyectos' ? 'Nueva solicitud de proyecto' : 'Nueva solicitud de compra'}</h2><div class="folio">Se guardará como borrador</div></div><button class="modal-close" id="closeNew">&times;</button></div>
       <div class="modal-body">
         <div class="field-grid">
+          <div class="field full">
+            <label>Destino de la solicitud</label>
+            <select id="n_destino">
+              <option value="compras" ${state.seccion==='compras'?'selected':''}>Compra normal</option>
+              <option value="proyectos" ${state.seccion==='proyectos'?'selected':''}>Proyecto</option>
+            </select>
+          </div>
+          <div class="field full" id="n_proyectoWrap" style="display:${state.seccion==='proyectos'?'block':'none'};">
+            <label>Nombre del proyecto</label>
+            <input id="n_proyecto" list="proyListNew" placeholder="Ej. Ampliación telares">
+            <datalist id="proyListNew">${proyectosExistentes().map(p=>`<option value="${p}">`).join('')}</datalist>
+            <div class="helper-text">Esta solicitud aparecerá en la sección Proyectos, con su propio kanban y tabla.</div>
+          </div>
           <div class="field"><label>Área</label><select id="n_area">${areasList.map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
           <div class="field"><label>Unidad de medida</label><input id="n_unidadMedida" list="umListNew" placeholder="Ej. bulto, caja, kg"><datalist id="umListNew">${unidadesList.map(un=>`<option value="${un}">`).join('')}</datalist></div>
           <div class="field full"><label>Producto</label><input id="n_producto" placeholder="Ej. Fertilizante NPK 17-6-18"></div>
@@ -1840,16 +1889,23 @@ function renderNewOrderModal(){
   overlay.addEventListener('click', e=>{ if(e.target.id==='newOverlay') closeNewOrder(); });
   document.getElementById('closeNew').addEventListener('click', closeNewOrder);
   document.getElementById('cancelNew').addEventListener('click', closeNewOrder);
+  document.getElementById('n_destino').addEventListener('change', e=>{
+    document.getElementById('n_proyectoWrap').style.display = e.target.value==='proyectos' ? 'block' : 'none';
+  });
 
   async function buildOrder(estado){
     const producto = document.getElementById('n_producto').value.trim();
     if(!producto){ document.getElementById('n_producto').style.borderColor = 'var(--rust)'; return false; }
+    const esProyecto = document.getElementById('n_destino').value === 'proyectos';
+    const proyecto = esProyecto ? document.getElementById('n_proyecto').value.trim() : '';
+    if(esProyecto && !proyecto){ document.getElementById('n_proyecto').style.borderColor = 'var(--rust)'; return false; }
     const fileInput = document.getElementById('n_cotizacionFile');
     const file = fileInput.files[0];
     if(file && file.size > 8*1024*1024){ alert('El archivo de cotización es muy grande. El máximo es 8 MB.'); return false; }
     const folio = await nextFolio();
     const docRef = await addDoc(collection(db,'solicitudes'), {
       folio,
+      esProyecto, proyecto,
       area: document.getElementById('n_area').value,
       producto,
       cantidad: Number(document.getElementById('n_cantidad').value)||1,
@@ -1868,6 +1924,7 @@ function renderNewOrderModal(){
       creadoEn: serverTimestamp(),
     });
     if(file) await subirCotizacion(docRef.id, file);
+    state.seccion = esProyecto ? 'proyectos' : 'compras';
     return true;
   }
   document.getElementById('saveDraftNew').addEventListener('click', async (e)=>{ const ok = await runAction(e.target, ()=>buildOrder('borrador')); if(ok) closeNewOrder(); });
