@@ -157,6 +157,8 @@
   .seg-editable{display:inline-block;min-width:60px;padding:4px 3px;border-radius:4px;cursor:text;user-select:text;}
   .seg-editable:hover{background:var(--brand-tint);}
   .cell-range-selected{background:rgba(47,107,79,.16) !important;}
+  .oc-table td.open-detail{cursor:pointer;color:var(--brand);font-weight:600;text-decoration:underline dotted;}
+  .oc-table tbody td{user-select:none;}
   .seguimiento-table tbody td, .oc-table.seguimiento-table tbody td, #historialTabla td, #segTablaBuscando td, #segTablaPendientes td{cursor:cell;}
   .seguimiento-table tbody tr:hover{background:transparent;cursor:default;}
   .history-row{cursor:pointer;}
@@ -713,6 +715,7 @@ const TABLE_COLS_BASE = [
   {key:'solicitante', label:'Solicitante'}, {key:'cantidad', label:'Cant. / UM', num:true},
   {key:'proveedor', label:'Proveedor'}, {key:'total', label:'Total', num:true},
   {key:'estado', label:'Estado'}, {key:'estadoCompra', label:'Estado de compra'}, {key:'fechaSolicitud', label:'Fecha'},
+  {key:'observaciones', label:'Observaciones'},
 ];
 
 function tableCols(){
@@ -722,6 +725,7 @@ function tableCols(){
   return cols;
 }
 function renderTable(){
+  clearCellSelection();
   const TABLE_COLS = tableCols();
   const u = state.currentUser;
   const showSelect = u.rol === 'aprobador';
@@ -730,7 +734,7 @@ function renderTable(){
   if(state.tableFilterEstado !== 'todos') rows = rows.filter(o=>o.estado===state.tableFilterEstado);
   if(state.tableSearch.trim()){
     const q = state.tableSearch.toLowerCase();
-    rows = rows.filter(o => (o.producto||'').toLowerCase().includes(q) || (o.proveedor||'').toLowerCase().includes(q) || (o.folio||'').toLowerCase().includes(q) || (o.area||'').toLowerCase().includes(q) || (o.proyecto||'').toLowerCase().includes(q));
+    rows = rows.filter(o => (o.producto||'').toLowerCase().includes(q) || (o.proveedor||'').toLowerCase().includes(q) || (o.folio||'').toLowerCase().includes(q) || (o.area||'').toLowerCase().includes(q) || (o.proyecto||'').toLowerCase().includes(q) || (o.observaciones||'').toLowerCase().includes(q));
   }
   const {col,dir} = state.tableSort;
   rows.sort((a,b)=>{
@@ -758,12 +762,13 @@ function renderTable(){
             return `
             <tr data-id="${o.id}">
               ${checkboxCell}
-              <td class="tabular">${o.folio}</td><td>${o.producto}</td>${state.seccion==='proyectos' ? `<td>${o.proyecto||'—'}</td>` : ''}<td>${o.area}</td><td>${o.solicitante}</td>
+              <td class="tabular open-detail" title="Clic para abrir el detalle">${o.folio}</td><td>${o.producto}</td>${state.seccion==='proyectos' ? `<td>${o.proyecto||'—'}</td>` : ''}<td>${o.area}</td><td>${o.solicitante}</td>
               <td class="num">${effectiveCantidad(o)} ${o.unidadMedida}</td><td>${o.proveedor || '—'}</td>
               <td class="num">${o.precioUnitario ? fmtCOP(total(o)) : '—'}</td>
               <td><span class="status-badge" style="background:${est.tint};color:${est.color}"><span class="status-dot" style="background:${est.color}"></span>${est.label}</span></td>
               <td>${o.estadoCompra ? (()=>{ const ec=estadoCompraInfo(o.estadoCompra); return `<span class="status-badge" style="background:${ec.tint};color:${ec.color}"><span class="status-dot" style="background:${ec.color}"></span>${ec.label}</span>`; })() : '—'}</td>
               <td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
+              <td style="white-space:normal;min-width:160px;max-width:240px;">${o.observaciones || '—'}</td>
             </tr>`;
           }).join('') || `<tr><td colspan="${TABLE_COLS.length + (showSelect?1:0)}" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay órdenes que coincidan.</td></tr>`}
         </tbody>
@@ -781,7 +786,14 @@ function renderTable(){
       renderTable();
     });
   });
-  mount.querySelectorAll('tbody tr[data-id]').forEach(tr=>{ tr.addEventListener('click', ()=>{ state.detailOrderId = tr.dataset.id; render(); }); });
+  // Clic en el folio o doble clic en la fila abre el detalle; arrastrar sobre las celdas las selecciona para copiar (Ctrl+C)
+  mount.querySelectorAll('tbody tr[data-id]').forEach(tr=>{
+    const abrir = ()=>{ state.detailOrderId = tr.dataset.id; render(); };
+    tr.addEventListener('dblclick', abrir);
+    const folioTd = tr.querySelector('td.open-detail');
+    if(folioTd) folioTd.addEventListener('click', (e)=>{ if(cellSelection.endRow!==cellSelection.startRow || cellSelection.endCol!==cellSelection.startCol) return; abrir(); });
+  });
+  enableCellRangeSelection(mount.querySelector('table.oc-table'));
   mount.querySelectorAll('.pend-check-table').forEach(el=>{
     el.addEventListener('click', e=>e.stopPropagation());
     el.addEventListener('change', ()=>{
@@ -831,6 +843,7 @@ const SEG_BUSCANDO_COLS = [
   {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'},
   {key:'cantidad', label:'Cant. / UM'}, {key:'solicitante', label:'Solicitante'},
   {key:'area', label:'Área'}, {key:'fechaSolicitud', label:'Fecha solicitud'},
+  {key:'observaciones', label:'Observ. solicitud'},
   {key:'proveedor', label:'Proveedor'},
 ];
 const SEG_ACTIVOS_COLS = [
@@ -841,6 +854,7 @@ const SEG_ACTIVOS_COLS = [
   {key:'pendiente', label:'Pendiente', get:o=>pendienteCompra(o)},
   {key:'solicitante', label:'Solicitante'}, {key:'area', label:'Área'},
   {key:'fechaSolicitud', label:'Fecha solicitud'}, {key:'fechaAprobacion', label:'Fecha aprobación'},
+  {key:'observaciones', label:'Observ. solicitud'},
   {key:'comentarioAprobacion', label:'Observ. aprobación'},
   {key:'proveedor', label:'Proveedor'}, {key:'precioUnitario', label:'Precio unit.'},
   {key:'total', label:'Total', get:o=>total(o)}, {key:'observacionesCompras', label:'Observaciones compras'},
@@ -848,6 +862,7 @@ const SEG_ACTIVOS_COLS = [
 ];
 const SEG_PENDIENTES_COLS = [
   {key:'folio', label:'Folio'}, {key:'producto', label:'Producto'}, {key:'area', label:'Área'},
+  {key:'observaciones', label:'Observ. solicitud'},
   {key:'cantidadRecibida', label:'Cant. / UM', get:o=>o.cantidadRecibida ?? effectiveCantidad(o)},
   {key:'proveedor', label:'Proveedor'}, {key:'precioUnitario', label:'Precio unit.'},
   {key:'total', label:'Total', get:o=>total(o)}, {key:'recepcionadoPor', label:'Recepcionado por'},
@@ -951,12 +966,25 @@ function enableCellRangeSelection(table){
 }
 
 document.addEventListener('mouseup', ()=>{ cellSelection.dragging = false; });
+document.addEventListener('keydown', (e)=>{
+  if(!((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a')) return;
+  if(e.target.closest('input,select,textarea')) return;
+  let table = (cellSelection.table && cellSelection.table.isConnected) ? cellSelection.table : null;
+  if(!table && state.view==='tabla') table = document.querySelector('#viewMount table.oc-table');
+  if(!table) return;
+  const rows = table.querySelectorAll('tbody tr[data-id]').length ? table.querySelectorAll('tbody tr[data-id]') : table.querySelectorAll('tbody tr');
+  if(!rows.length) return;
+  const lastCols = rows[0].children.length - 1;
+  cellSelection = { table, startRow:0, startCol:0, endRow:rows.length-1, endCol:lastCols, dragging:false };
+  paintCellSelection();
+  e.preventDefault();
+});
 document.addEventListener('mousedown', (e)=>{
   if(cellSelection.table && !e.target.closest('table')) clearCellSelection();
 });
 document.addEventListener('copy', (e)=>{
   const { table, startRow, startCol, endRow, endCol } = cellSelection;
-  if(!table) return;
+  if(!table || !table.isConnected) return;
   const r1 = Math.min(startRow,endRow), r2 = Math.max(startRow,endRow);
   const c1 = Math.min(startCol,endCol), c2 = Math.max(startCol,endCol);
   const rows = table.querySelectorAll('tbody tr');
@@ -967,8 +995,8 @@ document.addEventListener('copy', (e)=>{
     const vals = [];
     for(let ci=c1; ci<=c2 && ci<cells.length; ci++){
       const td = cells[ci];
-      const field = td.querySelector('input,select');
-      vals.push(field ? field.value : td.textContent.trim());
+      const field = td.querySelector('input:not([type=checkbox]),select');
+      vals.push(field ? field.value : td.textContent.replace(/\s+/g,' ').trim());
     }
     lines.push(vals.join('\t'));
   });
@@ -1022,6 +1050,7 @@ function renderSeguimiento(){
               <tr>
                 <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.cantidad} ${o.unidadMedida}</td>
                 <td>${o.solicitante}</td><td>${o.area}</td><td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
+                <td style="white-space:normal;min-width:160px;max-width:240px;">${o.observaciones || '—'}</td>
                 <td>${o.proveedor||'—'}</td>
                 <td>${o.cotizacionUrl ? '📎 Adjunta' : (o.sinCotizacion ? 'Sin cotización' : '—')}</td>
                 <td><button class="btn btn-primary" data-abrir-cotizacion="${o.id}" style="padding:5px 10px;font-size:11px;white-space:nowrap;">Gestionar</button></td>
@@ -1040,7 +1069,7 @@ function renderSeguimiento(){
         <table class="oc-table seguimiento-table">
           <thead><tr>${sortableTh(SEG_ACTIVOS_COLS, state.segSortActivos, '<th style="cursor:default;"></th>')}</tr></thead>
           <tbody>
-            ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="17" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
+            ${activos.length ? activos.map(o=>seguimientoRow(o)).join('') : `<tr><td colspan="18" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay compras activas por gestionar.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1053,6 +1082,7 @@ function renderSeguimiento(){
             ${pendientesFactura.length ? pendientesFactura.map(o=>`
               <tr data-id="${o.id}">
                 <td class="tabular">${o.folio}</td><td>${o.producto}</td><td>${o.area}</td>
+                <td style="white-space:normal;min-width:160px;max-width:240px;">${o.observaciones || '—'}</td>
                 <td class="tabular">${o.cantidadRecibida ?? effectiveCantidad(o)} ${o.unidadMedida}</td>
                 <td>${segCell(o,'proveedor',{placeholder:'Proveedor'})}</td>
                 <td>${segCell(o,'precioUnitario',{placeholder:'0'})}</td>
@@ -1060,7 +1090,7 @@ function renderSeguimiento(){
                 <td>${o.recepcionadoPor||'—'}</td><td class="tabular">${fmtDateTime(o.fechaRecepcion)}</td>
                 <td><button class="btn btn-primary" data-abrir-factura="${o.id}" style="padding:5px 10px;font-size:11px;white-space:nowrap;">Agregar factura</button></td>
               </tr>
-            `).join('') : `<tr><td colspan="10" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay pedidos recibidos a la espera de factura.</td></tr>`}
+            `).join('') : `<tr><td colspan="11" style="text-align:center;color:var(--ink-faint);padding:26px;">No hay pedidos recibidos a la espera de factura.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1096,6 +1126,7 @@ function seguimientoRow(o){
       <td>${o.solicitante}</td><td>${o.area}</td>
       <td class="tabular">${fmtDateTime(o.fechaSolicitud)}</td>
       <td class="tabular">${fmtDate(o.fechaAprobacion)}</td>
+      <td style="white-space:normal;min-width:160px;max-width:240px;">${o.observaciones || '—'}</td>
       <td style="white-space:normal;max-width:180px;">${o.comentarioAprobacion || '—'}</td>
       <td>${segCell(o,'proveedor',{placeholder:'Proveedor'})}</td>
       <td>${segCell(o,'precioUnitario',{placeholder:'0'})}</td>
