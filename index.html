@@ -479,9 +479,11 @@ async function bootstrap(){
   }, err=>console.error(err));
 
   onSnapshot(doc(db,'configuracion','unidades'), snap=>{
-    if(snap.exists() && Array.isArray(snap.data().lista) && snap.data().lista.length){
+    if(snap.exists() && Array.isArray(snap.data().lista)){
       unidadesList = snap.data().lista;
-    } else {
+    } else if(!snap.metadata.fromCache){
+      // El documento realmente no existe confirmado por el servidor (primera vez que corre la app): se crea con los valores iniciales.
+      // Si solo viene de la caché local (p. ej. por falta de conexión), NO se toca nada para no borrar datos reales guardados en el servidor.
       unidadesList = UNIDADES_DEFAULT.slice();
       setDoc(doc(db,'configuracion','unidades'), { lista: UNIDADES_DEFAULT }).catch(()=>{});
     }
@@ -494,9 +496,10 @@ async function bootstrap(){
   }, err=>console.error(err));
 
   onSnapshot(doc(db,'configuracion','areas'), snap=>{
-    if(snap.exists() && Array.isArray(snap.data().lista) && snap.data().lista.length){
+    if(snap.exists() && Array.isArray(snap.data().lista)){
       areasList = snap.data().lista;
-    } else {
+    } else if(!snap.metadata.fromCache){
+      // Igual que unidades: solo se siembra con los valores por defecto si el servidor confirma que el documento no existe.
       areasList = AREAS_DEFAULT.slice();
       setDoc(doc(db,'configuracion','areas'), { lista: AREAS_DEFAULT }).catch(()=>{});
     }
